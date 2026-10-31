@@ -60,7 +60,7 @@ const Sfx = (() => {
     }
 
     const sounds = {
-        light: () => { tone('sine', 190, 60, 0.12, 0.6); noise(0.05, 'highpass', 3000, 2000, 0.25); },
+        light: () => { tone('sine', 210, 70, 0.09, 0.5); noise(0.04, 'highpass', 3200, 2200, 0.22); },
         heavy: () => { tone('sine', 110, 38, 0.32, 0.9); tone('square', 70, 40, 0.18, 0.15); noise(0.12, 'lowpass', 1200, 200, 0.4); },
         dropkick: () => { tone('sine', 140, 45, 0.28, 0.85); noise(0.1, 'bandpass', 900, 300, 0.4, 2); },
         swing: () => noise(0.09, 'highpass', 1800, 5000, 0.12),
@@ -82,6 +82,26 @@ const Sfx = (() => {
         slowmo: () => { noise(1.2, 'lowpass', 2400, 120, 0.4, 4); tone('sine', 220, 55, 1.2, 0.3); },
         emoji: () => tone('triangle', 880 + Math.random() * 300, 1400, 0.08, 0.12),
         vote: () => { tone('sine', 880, 880, 0.12, 0.25); tone('sine', 1320, 1320, 0.15, 0.2, 0.12); },
+        straight: () => { tone('sine', 150, 50, 0.2, 0.8); noise(0.08, 'bandpass', 1500, 500, 0.35, 1.5); },
+        beam: () => { tone('sawtooth', 220, 90, 0.35, 0.25); noise(0.3, 'highpass', 2000, 800, 0.3); },
+        beamSweep: () => { tone('sawtooth', 110, 330, 1.2, 0.18); noise(1.2, 'bandpass', 400, 2400, 0.25, 3); },
+        beep: () => tone('square', 880, 880, 0.12, 0.18),
+        cancel: () => { noise(0.12, 'highpass', 1200, 6000, 0.3); tone('triangle', 900, 1400, 0.06, 0.12); },
+        bumper: () => { tone('sine', 180, 520, 0.18, 0.5); tone('triangle', 360, 900, 0.18, 0.2); },
+        restore: () => tone('triangle', 440, 660, 0.15, 0.15),
+        // the lobby
+        near: () => tone('sine', 1180, 1180, 0.05, 0.08),
+        ui: () => tone('triangle', 740, 980, 0.06, 0.12),
+        open: () => { tone('sine', 520, 780, 0.12, 0.14); tone('sine', 780, 1040, 0.12, 0.1, 0.06); },
+        siren: () => { tone('sine', 620, 930, 0.32, 0.28); tone('sine', 930, 620, 0.32, 0.2, 0.32); },
+        // Bomb Tag
+        tick: () => tone('square', 1500, 1500, 0.03, 0.12),
+        tickFast: () => { tone('square', 1900, 1900, 0.03, 0.18); tone('square', 1900, 1900, 0.03, 0.14, 0.25); },
+        pass: () => { tone('triangle', 500, 1000, 0.1, 0.25); },
+        boom: () => {
+            tone('sine', 60, 25, 1.4, 1.0); noise(1.2, 'lowpass', 3000, 60, 0.9);
+            tone('sawtooth', 90, 30, 0.6, 0.2);
+        },
         hazard: () => { for (const [f, d] of [[300, 0], [450, 0.1], [600, 0.2]]) tone('sawtooth', f, f * 1.5, 0.25, 0.12, d); },
     };
 

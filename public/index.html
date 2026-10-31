@@ -3,110 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0d1117">
+<meta name="theme-color" content="#0b0f17">
 <title>Stick Havoc</title>
-<style>
-  :root { --bg: #0d1117; --panel: rgba(15, 20, 30, 0.86); --line: rgba(120, 220, 255, 0.18); --text: #e6edf3;
-          --dim: #8b98a5; --cyan: #22d3ee; --pink: #f472b6; --gold: #facc15; }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
-               font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; }
-  #game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
-  .hidden { display: none !important; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px);
-           -webkit-backdrop-filter: blur(8px); }
-  button { font: inherit; color: var(--text); background: rgba(255,255,255,0.06); border: 1px solid var(--line);
-           border-radius: 10px; padding: 8px 14px; cursor: pointer; transition: background 120ms, transform 80ms; }
-  button:hover { background: rgba(255,255,255,0.12); }
-  button:active { transform: scale(0.96); }
-  /* join screen */
-  #join { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; z-index: 10;
-          background: radial-gradient(circle at 50% 30%, rgba(34,211,238,0.12), transparent 60%), rgba(13,17,23,0.82); }
-  #join .card { width: min(760px, 100%); padding: 22px; display: grid; grid-template-columns: 1fr auto; gap: 22px; }
-  #join h1 { margin: 0 0 4px; font-size: clamp(26px, 6vw, 40px); letter-spacing: 1px; font-weight: 900;
-             background: linear-gradient(90deg, var(--cyan), var(--pink), var(--gold)); -webkit-background-clip: text;
-             background-clip: text; color: transparent; }
-  #join .sub { color: var(--dim); margin: 0 0 16px; }
-  #name { width: 100%; font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 10px; color: var(--text);
-          background: rgba(255,255,255,0.05); border: 1px solid var(--line); outline: none; }
-  #name:focus { border-color: var(--cyan); }
-  #swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
-  .sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; padding: 0; }
-  .sw.on { border-color: white; box-shadow: 0 0 12px currentColor; }
-  #go { width: 100%; font-size: 18px; font-weight: 800; padding: 12px; background: linear-gradient(90deg, #0891b2, #db2777);
-        border: none; }
-  .keys { color: var(--dim); font-size: 13px; margin-top: 14px; line-height: 1.7; }
-  kbd { background: rgba(255,255,255,0.08); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px;
-        font: 12px ui-monospace, monospace; color: var(--text); }
-  #qrbox { text-align: center; }
-  #qr { width: 180px; height: 180px; background: white; border-radius: 10px; padding: 8px; image-rendering: pixelated; }
-  #url { font: 13px ui-monospace, monospace; color: var(--cyan); margin-top: 8px; word-break: break-all; max-width: 200px; }
-  @media (max-width: 640px) { #join .card { grid-template-columns: 1fr; } #qrbox { display: none; } }
-  /* in game */
-  /* the health bars take the top centre; the panels sit just under them */
-  #top { position: fixed; top: 64px; left: 10px; right: 10px; display: flex; justify-content: space-between;
-         align-items: flex-start; gap: 10px; pointer-events: none; z-index: 5; }
-  #top > * { pointer-events: auto; }
-  #modebox { padding: 6px 8px; display: flex; gap: 6px; align-items: center; font-size: 13px; }
-  #modebox .on { background: rgba(34,211,238,0.25); border-color: var(--cyan); }
-  #queue { padding: 8px 10px; min-width: 130px; max-width: 200px; font-size: 13px; }
-  @media (max-width: 700px) { #modebox { font-size: 12px; } #modebox button { padding: 6px 8px; } #modeLabel { display: none; }
-                              #queue { max-width: 150px; } }
-  /* touch: the pads have the bottom corners; emojis go up the right edge */
-  body.touch #emojis { left: 50%; bottom: auto; top: 58px; transform: translateX(-50%); padding: 3px; gap: 3px; }
-  body.touch #emojis button { font-size: 17px; padding: 2px 6px; }
-  body.touch #modebox { font-size: 11px; padding: 4px; } body.touch #modeLabel { display: none; }
-  body.touch #modebox button { padding: 4px 7px; } body.touch #queue { font-size: 11px; max-width: 130px; padding: 5px 8px; }
-  #rotate { position: fixed; left: 50%; top: 42%; transform: translateX(-50%); padding: 10px 16px; z-index: 6;
-            font-weight: 700; display: none; }
-  @media (orientation: portrait) { body.touch.playing #rotate { display: block; } }
-  #queue h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase; }
-  #queue ol { margin: 0; padding-left: 18px; }
-  #queue li { margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #emojis { position: fixed; left: 10px; bottom: 10px; display: flex; gap: 6px; padding: 6px; z-index: 5; }
-  #emojis button { font-size: 22px; padding: 4px 8px; }
-  #vote { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 10px 14px; z-index: 6;
-          text-align: center; }
-  #vote .q { font-weight: 800; margin-bottom: 8px; color: var(--gold); }
-  #vote button { min-width: 150px; margin: 0 4px; font-weight: 700; }
-  #vote .bar { height: 4px; background: var(--gold); border-radius: 2px; margin-top: 8px; transition: width 100ms linear; }
-  /* touch pads */
-  #touch { position: fixed; inset: auto 0 0 0; height: 46vh; z-index: 4; pointer-events: none; }
-  #touch .pad { position: absolute; bottom: 18px; display: grid; gap: 10px; pointer-events: auto; }
-  #touch .l { left: 16px; grid-template-columns: repeat(3, 62px); grid-template-rows: repeat(2, 62px); }
-  #touch .r { right: 16px; grid-template-columns: repeat(2, 70px); grid-template-rows: repeat(2, 70px); }
-  #touch button { width: 100%; height: 100%; border-radius: 50%; font-size: 22px; font-weight: 800; padding: 0;
-                  background: rgba(255,255,255,0.08); touch-action: none; }
-  #touch button.down { background: rgba(34,211,238,0.35); }
-  #toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); padding: 8px 14px; z-index: 6;
-           font-weight: 700; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <canvas id="game"></canvas>
 
-<div id="top" class="hidden">
-  <div id="modebox" class="panel">
-    <span id="modeLabel">Mode</span>
-    <button id="mKoth" data-mode="koth" title="Two fight, the rest queue: the loser goes to the back">King of the Hill</button>
-    <button id="mRumble" data-mode="rumble" title="Everyone at once on a crumbling arena">Royal Rumble</button>
-  </div>
-  <div id="queue" class="panel"><h3>Next up</h3><ol id="qlist"></ol></div>
+<!-- in a match -->
+<div id="info" class="panel hidden">
+  <div class="label" id="iMode"></div>
+  <div class="title" id="iMap"></div>
+  <div class="sub" id="iRound"></div>
+  <button id="iEnd" class="hidden" title="Host: end the match, everyone back to the lobby">Back to lobby</button>
 </div>
-
+<div id="board" class="panel hidden"><div class="label" id="bTitle">Next up</div><ol id="bList"></ol></div>
 <div id="emojis" class="panel hidden">
   <button data-e="🔥" title="Hype (5)">🔥</button><button data-e="💀" title="R.I.P. (6)">💀</button>
   <button data-e="🤡" title="Fail (7)">🤡</button><button data-e="🚀" title="Yeet (8)">🚀</button>
 </div>
-
 <div id="vote" class="panel hidden">
-  <div class="q">Crowd vote: what happens next? <span id="vt"></span></div>
+  <div class="q"><span id="vq">Crowd vote</span> <span id="vt" class="label"></span></div>
   <button id="v0"></button><button id="v1"></button>
   <div class="bar" id="vbar"></div>
 </div>
 
+<!-- always -->
+<div id="commands" class="panel"></div>
+<div id="feed"></div>
 <div id="toast" class="panel hidden"></div>
-<div id="rotate" class="panel">📱↻ Turn your phone sideways for a bigger arena</div>
+<div id="rotate" class="panel">Turn your phone sideways</div>
+
+<!-- the wardrobe -->
+<aside id="drawer" class="panel" aria-label="Wardrobe">
+  <h2>Wardrobe</h2>
+  <p class="sub">Everyone sees the change at once.</p>
+  <section><span class="label">Name</span><input id="dName" maxlength="16" autocomplete="off" spellcheck="false"></section>
+  <section><span class="label">Colour</span><div class="swatches" id="dColors"></div></section>
+  <section><span class="label">Headgear</span><div class="chips" id="dHats"></div></section>
+  <section><span class="label">Dash trail</span><div class="chips" id="dTrails"></div></section>
+  <button id="dDone">Done <kbd>Esc</kbd></button>
+</aside>
 
 <div id="touch" class="hidden">
   <div class="pad l">
@@ -114,36 +51,15 @@
     <button data-k="1">◀</button><button data-k="8">▼</button><button data-k="2">▶</button>
   </div>
   <div class="pad r">
-    <button data-k="32" title="Punch">J</button><button data-k="64" title="Launcher">K</button>
-    <button data-k="128" title="Dash">L</button><button data-k="16" title="Jump">⤒</button>
-  </div>
-</div>
-
-<div id="join">
-  <div class="card panel">
-    <div>
-      <h1>STICK HAVOC</h1>
-      <p class="sub">Tournament Edition · offline LAN brawler for 2–10 players</p>
-      <input id="name" maxlength="16" placeholder="Your fighter's name" autocomplete="off">
-      <div id="swatches"></div>
-      <button id="go">FIGHT ▸</button>
-      <div class="keys">
-        <kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> move · <kbd>W</kbd> <kbd>Space</kbd> <kbd>↑</kbd> jump, double jump, wall kick<br>
-        <kbd>J</kbd>/<kbd>Z</kbd> punch combo (hold <kbd>↑</kbd> to aim up) · <kbd>K</kbd>/<kbd>X</kbd> launcher, drop kick in the air<br>
-        <kbd>L</kbd>/<kbd>C</kbd> dash (invulnerable) · <kbd>↓</kbd>+jump drops through a ledge · mouse: click to punch where you point<br>
-        Crowd: <kbd>5</kbd>–<kbd>8</kbd> emojis · <kbd>1</kbd>/<kbd>2</kbd> vote
-      </div>
-    </div>
-    <div id="qrbox">
-      <canvas id="qr" width="180" height="180"></canvas>
-      <div id="url"></div>
-      <div class="keys">Same Wi-Fi or hotspot:<br>scan or type this address</div>
-    </div>
+    <button data-use="1" title="Use">E</button><button data-k="32" title="Punch">J</button><button data-k="64" title="Launcher">K</button>
+    <span></span><button data-k="128" title="Dash">L</button><button data-k="16" title="Jump">⤒</button>
   </div>
 </div>
 
 <script src="physics.js"></script>
 <script src="audio.js"></script>
+<script src="hud.js"></script>
+<script src="lobby.js"></script>
 <script src="engine.js"></script>
 </body>
 </html>

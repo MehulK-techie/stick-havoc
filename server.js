@@ -176,7 +176,7 @@ function startRound() {
     m.clock = 0;
     m.winner = null;
     if (m.mode === 'arcade') {
-        m.active = [m.arcade.player, m.arcade.bot];
+        m.active = [m.arcade.player, m.arcade.bot].filter(id => players.has(id));
         m.queue = humans().map(p => p.id).filter(id => id !== m.arcade.player);
     } else if (m.mode === 'koth') {
         m.queue = m.queue.filter(id => players.has(id));
@@ -188,6 +188,7 @@ function startRound() {
         m.queue = [];
     }
     const spots = P.MAPS[m.map].spawns;
+    m.active = m.active.filter(id => players.has(id));     // (someone may have just left)
     m.active.forEach((id, i) => {
         const p = players.get(id);
         const [x, y] = spots[i % spots.length];
@@ -494,6 +495,10 @@ const clean = s => String(s || '').replace(/[^\p{L}\p{N} _.\-!?]/gu, '').trim().
 
 function removePlayer(id) {
     players.delete(id);
+    if (match && match.arcade && match.arcade.player === id) {   // the arcade player left: it's over
+        backToLobby();
+        return roster();
+    }
     lobby.fighters = lobby.fighters.filter(f => f.id !== id);
     if (match) {
         match.queue = match.queue.filter(q => q !== id);
@@ -550,6 +555,13 @@ wss.on('connection', ws => {
     roster();
     let budget = 120, last = Date.now();
     ws.on('message', raw => {
+        try {
+            onMessage(raw);
+        } catch (e) {
+            console.error(`[!] a message from player ${id} failed: ${e.message}`);
+        }
+    });
+    const onMessage = raw => {
         const now = Date.now();
         budget = Math.min(120, budget + (now - last) * 0.12);    // at most ~120 messages a second
         last = now;
@@ -578,8 +590,8 @@ wss.on('connection', ws => {
             match.vote.voters.includes(id) && !match.vote.by.has(id)) {
             match.vote.by.set(id, m.o);
             match.vote.ballots.push(m.o);
-        } else if (m.t === 'settings' && isHost && scene === 'lobby' && m.key in CHOICES &&
-            CHOICES[m.key].includes(m.value)) {
+        } else if (m.t === 'settings' && isHost && scene === 'lobby' && typeof m.key === 'string' &&
+            Object.hasOwn(CHOICES, m.key) && CHOICES[m.key].includes(m.value)) {   // (own keys only: not "toString")
             sel[m.key] = m.value;                      // everyone's wall screen shows it next tick
             pendingEvents.push({type: 'console'});
         } else if (m.t === 'arcade' && isHost && scene === 'lobby' && lobby.starting === undefined) {
@@ -598,7 +610,7 @@ wss.on('connection', ws => {
         } else if (m.t === 'lobby' && isHost && scene === 'match') {
             backToLobby();
         }
-    });
+    };
     ws.on('close', () => removePlayer(id));
 });
 
@@ -607,7 +619,11 @@ setInterval(() => {
     const now = process.hrtime.bigint();
     const dt = Math.min(0.1, Number(now - lastTick) / 1e9);
     lastTick = now;
-    tick(dt);
+    try {
+        tick(dt);
+    } catch (e) {                         // log it and carry on: the next tick is a fresh chance
+        console.error(`[!] tick failed: ${e.stack}`);
+    }
 }, 1000 / TPS);
 
 server.listen(PORT, '0.0.0.0', () => {

@@ -171,10 +171,29 @@ async function brawl(fighters, ms) {
     for (let i = 0; i < 500; i++) a.ws.send(JSON.stringify({t: 'in', k: 999999}));
     await sleep(500);
     check('still running after junk and a flood', srv.exitCode === null && last !== null);
+    // hostile messages: an inherited key, and the arcade player leaving mid-run
+    b.send({t: 'settings', key: 'toString', value: 1});
+    a.send({t: 'settings', key: 'toString', value: 1}); a.send({t: 'settings', key: '__proto__', value: 1});
+    await sleep(300);
+    check('a "toString" settings key is ignored', srv.exitCode === null);
+    if (last.scene !== 'match') {
+        await until(() => last.scene === 'lobby', 8000);
+        a.send({t: 'arcade'});
+        await until(() => last.mode === 'arcade', 3000);
+    }
+    const e = await client('Eve');
+    await sleep(300);
+    // (a stands in for the arcade player only when it is a's run; make sure it is)
+    check('the arcade is running', last.mode === 'arcade' && last.arcade.player === a.id);
     // the host leaves: the next one in becomes host, and everyone is told
     seen = new Set();
     a.ws.close();
     check('the host leaving hands the room on', await until(() => seen.has('host') && b.roster.host === b.id, 3000));
+    check('the arcade player leaving mid-run ends it, server still up', await until(() => last.scene === 'lobby', 3000) &&
+        srv.exitCode === null);
+    await sleep(1500);
+    check('and the room keeps running', srv.exitCode === null && last.scene === 'lobby');
+    e.ws.close();
     console.log(failures ? `\n${failures} failed` : '\nall passed');
     for (const x of [b, c]) x.ws.close();
     srv.kill();

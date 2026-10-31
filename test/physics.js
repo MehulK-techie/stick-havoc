@@ -48,10 +48,10 @@ function run(w, frames, inputs) {
     }
     check('juggled: two or more hits before they land', pops >= 2);
 }
-{   // Down + K in the air: a 45-degree dive; it spikes someone airborne
+{   // Down + forward + K in the air: a 45-degree dive; it spikes someone airborne
     const w = world('reactor'); const a = fighter(w, 1, 700, 500), b = fighter(w, 2, 760, 560);
     a.ground = b.ground = false; a.st = b.st = 'air'; a.face = 1; b.vy = -100;
-    const first = run(w, 1, {1: {k: P.IN.DOWN | P.IN.HEAVY}});   // (2 frames of startup: it can land at once)
+    const first = run(w, 1, {1: {k: P.IN.DOWN | P.IN.RIGHT | P.IN.HEAVY}});   // (2 frames of startup: it can land at once)
     check('the dive goes down at 45 degrees', a.atk && a.atk.kind === 'dive' && Math.abs(a.vx) === Math.abs(a.vy));
     const ev = [...first, ...run(w, 6, {})];
     check('a dive spikes an airborne opponent downwards', ev.some(e => e.type === 'hit' && e.kind === 'dive') && b.vy > 500);
@@ -59,7 +59,7 @@ function run(w, frames, inputs) {
 {   // ... and ricochets off a standing one
     const w = world('reactor'); const a = fighter(w, 1, 760, 760); fighter(w, 2, 800);
     a.ground = false; a.st = 'air'; a.face = 1;
-    run(w, 1, {1: {k: P.IN.DOWN | P.IN.HEAVY}});
+    run(w, 1, {1: {k: P.IN.DOWN | P.IN.RIGHT | P.IN.HEAVY}});
     run(w, 5, {});
     check('a dive ricochets off a standing opponent', a.vy < 0 && !a.atk);
 }
@@ -274,6 +274,52 @@ function run(w, frames, inputs) {
         if (def.hp < 40) def.hp = 100;
     }
     check('it guards or parries an attacker', seen.has('block') || seen.has('parry'));
+}
+{   // the ledge: hang, then a smooth mantle onto the top; down lets go without re-grabbing
+    const w = world('reactor'); const f = fighter(w, 1, 162, 700); f.ground = false; f.vy = 300; f.st = 'air';
+    run(w, 8, {});
+    const p = w.plats[f.ledge.p];
+    run(w, 1, {1: {k: P.IN.UP}});
+    const ys = [];
+    for (let i = 0; i < 8; i++) {
+        run(w, 1, {1: {k: 0}});
+        ys.push(f.y);
+    }
+    check('the mantle rises smoothly (never down) and ends standing on top', ys.every((y, i) => i === 0 || y <= ys[i - 1] + 0.01) &&
+        f.ground && f.plat === p && f.st === 'idle' && f.x > p.x);
+    const w2 = world('reactor'); const g = fighter(w2, 1, 162, 700); g.ground = false; g.vy = 300; g.st = 'air';
+    run(w2, 8, {});
+    const ev = run(w2, 4, i => ({1: {k: i === 0 ? P.IN.DOWN : 0}}));   // (falling, not yet landed)
+    check('down lets go with a push and no re-grab', !g.ledge && g.vy > 0 && ev.filter(e => e.type === 'ledge').length === 0);
+}
+{   // forward + J: the lunge; down + J: the sweep; down + K in the air: the ground pound
+    const w = world('reactor'); const a = fighter(w, 1, 700), b = fighter(w, 2, 790); a.face = 1;
+    const ev = run(w, 8, i => ({1: {k: i === 0 ? P.IN.RIGHT | P.IN.LIGHT : 0}}));
+    check('forward + J lunges in and lands from further out', ev.some(e => e.type === 'hit' && e.kind === 'lunge'));
+    const w2 = world('reactor'); const c = fighter(w2, 1, 700), d = fighter(w2, 2, 750); c.face = 1;
+    const ev2 = run(w2, 8, i => ({1: {k: i === 0 ? P.IN.DOWN | P.IN.LIGHT : 0}}));
+    check('down + J sweeps them off their feet', ev2.some(e => e.type === 'hit' && e.kind === 'sweep') && d.st === 'tumble');
+    const w3 = world('reactor'); const e = fighter(w3, 1, 800, 600), o = fighter(w3, 2, 880); e.ground = false; e.st = 'air';
+    let lifted = 0;
+    const ev3 = [];
+    for (let i = 0; i < 12; i++) {
+        ev3.push(...run(w3, 1, {1: {k: i === 0 ? P.IN.DOWN | P.IN.HEAVY : 0}}));
+        lifted = Math.min(lifted, o.vy);
+    }
+    check('the ground pound drops straight down and sends a shockwave', ev3.some(x => x.type === 'pound') && lifted < -200 &&
+        Math.abs(e.x - 800) < 2);
+}
+{   // breakfall: dash just before landing from a tumble: a roll, invulnerable
+    const w = world('reactor'); const f = fighter(w, 1, 800, 700); Object.assign(f, {ground: false, st: 'tumble', vy: 400, stun: 0.5});
+    const ev = run(w, 12, i => ({1: {k: i === 2 ? P.IN.DASH : 0}}));
+    check('a breakfall rolls you up, invulnerable', ev.some(e => e.type === 'tech') && f.st !== 'tumble');
+}
+{   // the knockout: frozen, then a second at quarter speed; the body bounces once and lies still
+    const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 750); a.face = 1; b.hp = 3;
+    run(w, 9, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));      // (the 120 ms freeze first)
+    check('a knockout freezes, then runs at 0.25x', w.koSlow > 0 && w.timeScale < 0.6);
+    const ev = run(w, 120, {});
+    check('the body bounces once and settles', ev.filter(e => e.type === 'thud' && e.id === 2).length === 1 && b.rest);
 }
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

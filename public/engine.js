@@ -101,8 +101,13 @@
                 }
             }
         });
-        Object.assign(Lobby.state, {sel: s.sel, ready: s.ready, max: s.max, starting: s.starting});
+        Object.assign(Lobby.state, {sel: s.sel, ready: s.ready, max: s.max, starting: s.starting, goals: s.goals,
+            record: s.record});
         Hud.setScene(s.scene);
+        if (s.scene === 'lobby' && scene !== 'lobby') {
+            hidePodium();
+            endCinema();
+        }
         scene = s.scene;
         if (s.scene === 'lobby') {
             Hud.syncSettings(s.sel, myId === hostId);
@@ -212,12 +217,6 @@
             burst(ev.x, ev.y, '#e5e7eb', 8, 400);
             Sfx.play('kick');
             break;
-        case 'climb':
-            Lobby.pop({text: `CLIMB TIME: ${ev.t.toFixed(1)}s`, x: ev.x, y: ev.y - 120, big: true, color: '#22d3ee'});
-            if (ev.id === myId)
-                Hud.toast(`Parkour tower: ${ev.t.toFixed(1)} s`);
-            Sfx.play('fight');
-            break;
         case 'lava':
             burst(ev.x, ev.y, '#fb923c', 18, 700, 0, -1);
             Sfx.play('sizzle');
@@ -308,7 +307,8 @@
             ring(ev.x, ev.y, ev.color || '#f1f5f9');
             burst(ev.x, ev.y, ev.color || '#f1f5f9', 50, 1300);
             cam.shake = 28; cam.flash = 1; cam.slow = 0;
-            banner('K.O.', '#f43f5e', 1.3, 150);
+            startCinema();
+            banner('K.O.!', '#f43f5e', 1.5, 150, 'spring');
             if (ev.id === myId)
                 Touch.buzz(90);
             Sfx.play('ko');
@@ -421,12 +421,55 @@
             cam.z = 0.7; cam.y = H * 0.8;        // a sweep in to the new stage
             banner(ev.name.toUpperCase(), '#e5e7eb', 1.8, 54);
             break;
-        case 'roundEnd':
-            if (ev.champion)
-                setTimeout(() => banner(`${nameOf(ev.champion).toUpperCase()} IS THE CHAMPION`, colorOf(ev.champion), 4, 48), 900);
-            else
-                setTimeout(() => banner(ev.winner ? `${nameOf(ev.winner).toUpperCase()} WINS` : 'DRAW',
-                    ev.winner ? colorOf(ev.winner) : '#e5e7eb', 2, 56), 900);
+        case 'roundEnd':                          // after the K.O. (banners take turns: no overlap)
+            if (ev.champion) {
+                setTimeout(() => showPodium(ev.champion, ev.stats), 2300);
+            } else {
+                banner(ev.winner ? `ROUND ${ev.round || ''} · ${nameOf(ev.winner).toUpperCase()}` : 'DRAW',
+                    ev.winner ? colorOf(ev.winner) : '#e5e7eb', 1.6, 52);
+            }
+            break;
+        case 'goal':
+            for (let i = 0; i < 60; i++) {           // confetti
+                const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2, v = 400 + Math.random() * 700;
+                particles.push({k: 'pixel', x: ev.x, y: ev.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0,
+                    max: 1.2 + Math.random() * 0.6, color: `hsl(${Math.random() * 360}, 90%, 62%)`, size: 6});
+            }
+            banner('GOAL!', '#facc15', 1.3, 110);
+            Sfx.play('airhorn');
+            break;
+        case 'climb':
+            Lobby.pop({text: `CLIMB TIME: ${ev.t.toFixed(2)}s`, x: ev.x, y: ev.y - 120, big: true, color: '#facc15'});
+            if (ev.id === myId)
+                Hud.toast(`Parkour tower: ${ev.t.toFixed(2)} s`);
+            for (let i = 0; i < 3; i++)                // gold fireworks over the finish
+                setTimeout(() => {
+                    const fx = ev.x + (Math.random() - 0.5) * 160, fy = ev.y - 120 - Math.random() * 60;
+                    burst(fx, fy, '#facc15', 30, 520);
+                    ring(fx, fy, '#fde68a');
+                    Sfx.play('firework');
+                }, i * 260);
+            break;
+        case 'record':
+            Hud.toast(`New tower record: ${ev.t.toFixed(2)} s by ${ev.name}`, 3500);
+            break;
+        case 'climbReset':
+            if (ev.id === myId)
+                Hud.toast('Back on the floor: the climb clock resets');
+            break;
+        case 'tech':
+            dust(ev.x, ev.y, 10);
+            Sfx.play('dash');
+            break;
+        case 'pound':
+            ring(ev.x, ev.y - 10, '#e5e7eb');
+            dust(ev.x, ev.y, 24);
+            cam.shake = Math.max(cam.shake, 14);
+            cam.ky += 10;
+            Sfx.play('heavy');
+            break;
+        case 'mantle':
+            Sfx.play('ledge');
             break;
         case 'lobby':
             banner('LOBBY', '#e5e7eb', 1.2, 54);
@@ -454,8 +497,64 @@
         particles.push({k: 'ring', x, y, life: 0, max: 0.55, color, size: 10});
     }
 
-    function banner(text, color, dur, size) {
-        banners.push({text, color, dur, size, t: 0});
+    function banner(text, color, dur, size, style) {
+        banners.push({text, color, dur, size, t: 0, style});
+    }
+
+    // the knockout's cinematic: letterbox bars slide in, the HUD steps aside
+    const cinema = {on: false, t: 0, until: 0};
+    function startCinema() {
+        cinema.on = true;
+        cinema.t = 0;
+        cinema.until = performance.now() + 3200;
+        document.body.classList.add('cinematic');
+    }
+
+    function endCinema() {
+        cinema.on = false;
+        document.body.classList.remove('cinematic');
+    }
+
+    // the winner's card: their figure in a victory loop, their name, the match in three numbers
+    let podiumFor = null;
+    function showPodium(id, stats) {
+        const p = info(id);
+        podiumFor = {id, p, t0: performance.now()};
+        $('pName').textContent = p.name;
+        $('pName').style.color = p.color;
+        $('pName').style.textShadow = `0 0 18px ${p.color}`;
+        $('pStats').innerHTML = stats ? `<span>Rounds <b>${stats.rounds}</b></span><span>Highest combo <b>${stats.combo} hits</b></span>` +
+            `<span>Finishing move <b>${stats.finisher}</b></span>` : '';
+        $('podium').classList.remove('hidden');
+        requestAnimationFrame(() => $('podium').classList.add('show'));
+        startCinema();                          // a lava or ring-out finish has no K.O. to start it
+        cinema.until = Infinity;
+        banners.length = 0;
+        Sfx.play('fight');
+    }
+
+    function hidePodium() {
+        if (!podiumFor)
+            return;
+        podiumFor = null;
+        $('podium').classList.remove('show');
+        setTimeout(() => $('podium').classList.add('hidden'), 300);
+        endCinema();
+    }
+
+    function drawPodium() {
+        if (!podiumFor)
+            return;
+        const c = $('podiumFig'), g = c.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, c.width, c.height);
+        g.setTransform(1.5, 0, 0, 1.5, 110 - 1.5 * 100, 0);
+        const t = (performance.now() - podiumFor.t0) / 1000;
+        drawRig(g, {x: 100, y: 128 + Math.abs(Math.sin(t * 3)) * -6, face: 1, st: 'victory', vx: 0, color: podiumFor.p.color,
+            gear: podiumFor.p.gear || {}}, t, {eyes: (podiumFor.p.gear || {}).eyes});
+        const s = snaps.length && snaps[snaps.length - 1].s;
+        if (s && s.ph === 'end')
+            $('pCount').textContent = `Returning to lobby in ${Math.max(1, Math.ceil(7.5 - s.pt))}s...`;
     }
 
     // ------------------------------------------------------------ interpolation
@@ -577,7 +676,7 @@
                 drawAnvil(x, y);
             for (const [x, y, , landed] of v.cr)
                 Weapons.drawCrate(ctx, x, y, landed, clock);
-            if (v.s.ball)
+            if (v.s.ball && !v.s.ballOut)
                 drawBall(v.s.ball);
             if (v.s.tunnel)
                 drawTunnel(v.s.tunnel);
@@ -603,8 +702,20 @@
             ctx.fillStyle = `rgba(255,255,255,${cam.flash * 0.45})`;
             ctx.fillRect(0, 0, cw, ch);
         }
-        if (v && !lobby)
+        if (cinema.on && performance.now() > cinema.until && !podiumFor)
+            endCinema();
+        if (v && !lobby && !cinema.on)
             drawHud(v);
+        if (cinema.on || cinema.t > 0) {            // the letterbox: 36 px bars sliding in and out
+            cinema.t = Math.max(0, Math.min(1, cinema.t + (cinema.on ? dt : -dt) * 4));
+            const bar = 36 * cinema.t;
+            ctx.fillStyle = '#05070b';
+            ctx.fillRect(0, 0, cw, bar);
+            ctx.fillRect(0, ch - bar, cw, bar);
+        }
+        drawPodium();
+        if (lobby && v)
+            drawClimbClock(v);
         drawSpeedLines(v);
         drawFloaters(dt);
         drawBanners(dt);
@@ -1039,6 +1150,24 @@
         }
     }
 
+    // the parkour clock, top right, while you're on the tower
+    function drawClimbClock(v) {
+        const me = v.s.f.find(f => f[0] === myId);
+        if (!me || !(me[19] >= 0))
+            return;
+        ctx.save();
+        ctx.font = '700 15px ui-monospace, SFMono-Regular, monospace';
+        ctx.textAlign = 'right';
+        const text = `CLIMB: ${me[19].toFixed(2)}s`, w = ctx.measureText(text).width + 22;
+        ctx.fillStyle = 'rgba(17, 24, 39, 0.9)';
+        ctx.fillRect(cw - 16 - w, 58, w, 30);
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
+        ctx.strokeRect(cw - 16 - w, 58, w, 30);
+        ctx.fillStyle = '#e5e7eb';
+        ctx.fillText(text, cw - 27, 78);
+        ctx.restore();
+    }
+
     // dashing fast: streaks along the screen's edges
     function drawSpeedLines(v) {
         const me = v && v.f.find(f => f.id === myId);
@@ -1073,10 +1202,12 @@
     }
 
     function drawBanners(dt) {
-        for (const b of banners) {
+        // one at a time, in order: the K.O., then the round, never on top of each other
+        for (const b of banners.slice(0, 1)) {
             b.t += dt;
             const k = b.t / b.dur;
-            const scale = k < 0.12 ? 0.85 + (k / 0.12) * 0.15 : 1;
+            const scale = b.style === 'spring' ? 1 + 0.5 * Math.exp(-7 * b.t) * Math.cos(16 * b.t) :
+                k < 0.12 ? 0.85 + (k / 0.12) * 0.15 : 1;
             ctx.save();
             ctx.globalAlpha = k < 0.12 ? k / 0.12 : k > 0.75 ? Math.max(0, 1 - (k - 0.75) / 0.25) : 1;
             ctx.translate(cw / 2, ch * 0.4);
@@ -1085,8 +1216,8 @@
             ctx.font = `800 ${size}px system-ui, sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = 'rgba(11, 15, 23, 0.55)';
-            ctx.fillText(b.text, 3, 4);
+            ctx.fillStyle = b.style === 'spring' ? 'rgba(0, 0, 0, 0.85)' : 'rgba(11, 15, 23, 0.55)';
+            ctx.fillText(b.text, b.style === 'spring' ? 6 : 3, b.style === 'spring' ? 8 : 4);   // a sharp drop shadow
             ctx.fillStyle = b.color;
             ctx.fillText(b.text, 0, 0);
             ctx.restore();

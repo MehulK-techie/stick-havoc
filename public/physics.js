@@ -146,6 +146,9 @@
         grab: {dur: fr(24), from: fr(3), to: fr(7), reach: 0, r: 0, dmg: 10},
         airkick: {dur: fr(25), from: fr(3), to: fr(21), reach: 0, r: 40, dmg: 11},
         dive: {dur: fr(30), from: fr(2), to: fr(27), reach: 0, r: 40, dmg: 10},
+        lunge: {dur: fr(20), from: fr(6), to: fr(11), reach: 70, r: 38, dmg: 8},      // forward + J
+        sweep: {dur: fr(22), from: fr(6), to: fr(11), reach: 52, r: 34, dmg: 7},      // down + J, low
+        pound: {dur: fr(60), from: fr(2), to: fr(58), reach: 0, r: 36, dmg: 9},       // down + K in the air
     };
     const STRING = ['jab', 'hook', 'straight'];
 
@@ -229,6 +232,15 @@
         case 'airkick':
             kx = a.face * 960; ky = -260; stun = 0.6; tumble = true;
             break;
+        case 'lunge':                                  // a piercing straight with a step behind it
+            kx = a.face * 520; ky = -200; stun = 0.4;
+            break;
+        case 'sweep':                                  // swept off their feet: down for a moment
+            kx = a.face * 120; ky = -300; stun = 0.6; tumble = true;
+            break;
+        case 'pound':
+            kx = a.face * 160; ky = airborne ? 900 : -420; stun = 0.5;
+            break;
         case 'dive':
             if (airborne) {                            // a spike, straight down
                 kx = a.face * 200; ky = 1150; tumble = true;
@@ -303,7 +315,7 @@
         if (t.hp <= 0) {
             if (a.hp > 0 && a.hp < C.HP * 0.25)
                 callout(w, a, 'CLUTCH REVERSAL!');
-            knockOut(w, t, a);
+            knockOut(w, t, a, kind);
         }
     }
 
@@ -323,7 +335,7 @@
             knockOut(w, t, a);
     }
 
-    function knockOut(w, t, a) {
+    function knockOut(w, t, a, kind) {
         t.hp = 0;
         t.st = 'ko';
         t.koT = 0;
@@ -332,11 +344,13 @@
         t.vx = face * 950;
         t.vy = -760;
         t.spinV = face * 16;
-        w.hitstop = 0.08;                             // the knockout freeze
+        w.hitstop = 0.12;                             // the knockout freeze
         w.slowmo = 0;
-        w.timeScale = 1;
+        w.koSlow = 1.0;                               // then a second at quarter speed
+        t.bounces = 0;
+        t.mantle = null; t.ledge = null;
         w.events.push({type: 'ko', x: Math.round(t.x), y: Math.round(t.y - 50), id: t.id, by: a ? a.id : null,
-            color: a ? a.color : '#f1f5f9'});
+            color: a ? a.color : '#f1f5f9', kind: kind || null});
     }
 
     // a bomb or a shockwave: everyone near is thrown away from (x, y)
@@ -361,7 +375,10 @@
             w.hitstop -= dtReal;
             return;
         }
-        if (w.slowmo > 0) {
+        if (w.koSlow > 0) {                            // after a knockout: a second at 0.25x
+            w.koSlow -= dtReal;
+            w.timeScale += (0.25 - w.timeScale) * 0.5;
+        } else if (w.slowmo > 0) {
             w.slowmo -= dtReal;
             w.timeScale += (0.2 - w.timeScale) * 0.4;
         } else {
@@ -417,12 +434,27 @@
         }
         if (f.ledge) {                                    // hanging: climb up, or let go
             f.ledgeT += dt;
-            if (pressed & (IN.JUMP | IN.UP)) {
-                f.ledge = null; f.vy = -C.JUMP; f.st = 'air'; f.jumps = 1; f.ledgeCd = 0.4;
+            const awayKey = f.ledge.side < 0 ? IN.LEFT : IN.RIGHT;
+            if ((pressed & IN.JUMP) && (k & awayKey)) {   // jump + away: leap off backwards
+                f.ledge = null; f.vy = -C.JUMP; f.vx = -f.face * 420; f.face = -f.face; f.st = 'air'; f.jumps = 1;
+                f.ledgeCd = 0.4;
                 w.events.push({type: 'jump', id: f.id});
+            } else if (pressed & (IN.JUMP | IN.UP)) {   // climb: the 220 ms mantle
+                const p = w.plats[f.ledge.p];
+                f.mantle = {t: 0, p: f.ledge.p, side: f.ledge.side, x0: f.x, y0: f.y,
+                    x1: f.ledge.side < 0 ? p.x + 22 : p.x + p.w - 22};
+                f.ledge = null; f.st = 'mantle'; f.inv = Math.max(f.inv, 0.25);
+                w.events.push({type: 'mantle', id: f.id});
             } else if ((pressed & IN.DOWN) || f.ledgeT > 2.5) {
-                f.ledge = null; f.st = 'air'; f.ledgeCd = 0.6;
+                f.noGrab = f.ledge.p;                       // not this ledge again until you land
+                f.ledge = null; f.st = 'air'; f.vy = 180; f.ledgeCd = 0.25;   // let go: a small push down
             }
+            return;
+        }
+        if (f.mantle)
+            return;
+        if ((pressed & IN.DASH) && f.st === 'tumble') {  // breakfall: tap dash just before you hit the floor
+            f.techAt = w.time;
             return;
         }
         if (f.dashT > 0)
@@ -516,11 +548,17 @@
             return;
         }
         let kind;
-        if ((pressed & IN.HEAVY) && !f.ground)
-            kind = (k & IN.DOWN) ? 'dive' : 'airkick';
+        const forward = f.face > 0 ? IN.RIGHT : IN.LEFT;
+        if ((pressed & IN.HEAVY) && !f.ground)          // in the air: ↓+→ K dives at 45°, ↓ K pounds straight down
+            kind = (k & IN.DOWN) ? ((k & (IN.LEFT | IN.RIGHT)) ? 'dive' : 'pound') : 'airkick';
         else if ((pressed & IN.HEAVY) || ((pressed & IN.LIGHT) && (k & IN.UP) && f.ground))
             kind = 'uppercut';
-        else {
+        else if ((pressed & IN.LIGHT) && (k & IN.DOWN) && f.ground)
+            kind = 'sweep';
+        else if ((pressed & IN.LIGHT) && (k & forward) && f.ground && f.comboT <= 0) {
+            kind = 'lunge';                             // opens the string: J next is the hook
+            f.combo = 1;
+        } else {
             f.combo = f.comboT > 0 ? (f.combo % 3) + 1 : 1;
             kind = STRING[f.combo - 1];
         }
@@ -532,6 +570,10 @@
             f.vx = f.face * 720; f.vy = Math.min(f.vy, 0) * 0.3;
         } else if (kind === 'dive') {
             f.vx = f.face * 760; f.vy = 760;           // 45 degrees down
+        } else if (kind === 'pound') {
+            f.vx = 0; f.vy = 1400;                     // straight down, fast
+        } else if (kind === 'lunge') {
+            f.vx = f.face * 620;                       // the step in
         }
         w.events.push({type: 'swing', id: f.id, kind});
     }
@@ -596,6 +638,10 @@
             let cx, cy;
             if (a.kind === 'airkick') {
                 cx = f.x + f.face * 34; cy = f.y - 40;
+            } else if (a.kind === 'sweep') {             // along the floor
+                cx = f.x + f.face * m.reach; cy = f.y - 12;
+            } else if (a.kind === 'pound') {
+                cx = f.x; cy = f.y - 6;
             } else if (a.kind === 'uppercut') {          // low and forward: it catches a standing opponent
                 cx = f.x + f.face * 34; cy = f.y - 52;
             } else if (Weapons.KINDS[a.kind]) {
@@ -659,7 +705,38 @@
         }
     }
 
+    // the mantle over a ledge: chest to the lip, a leg up, weight forward, standing
+    const MANTLE_T = 0.22;
+    function mantle(w, f, dt) {
+        const m = f.mantle, p = w.plats[m.p];
+        if (!p || !p.alive) {
+            f.mantle = null; f.st = 'air';
+            return;
+        }
+        m.t += dt;
+        const k = Math.min(1, m.t / MANTLE_T), ease = u => u * u * (3 - 2 * u);
+        const edgeX = m.side < 0 ? p.x - 14 : p.x + p.w + 14;
+        if (k < 0.36) {                       // 1: arms bend, the chest rises level with the edge
+            const u = ease(k / 0.36);
+            f.x = edgeX; f.y = p.y + 72 - 34 * u;
+        } else if (k < 0.73) {                // 2: hips swing forward, a knee hooks onto the top
+            const u = ease((k - 0.36) / 0.37);
+            f.x = edgeX + (m.x1 - edgeX) * 0.55 * u; f.y = p.y + 38 - 34 * u;
+        } else {                              // 3: weight forward, up to standing
+            const u = ease((k - 0.73) / 0.27);
+            f.x = edgeX + (m.x1 - edgeX) * (0.55 + 0.45 * u); f.y = p.y + 4 - 4 * u;
+        }
+        f.vx = f.vy = 0;
+        f.mp = k;
+        if (k >= 1) {
+            f.mantle = null; f.y = p.y; f.ground = true; f.plat = p; f.st = 'idle'; f.jumps = 2; f.airDash = true;
+            f.mp = 0;
+        }
+    }
+
     function move(w, f, dt) {
+        if (f.mantle)
+            return mantle(w, f, dt);
         if (f.ledge) {
             const p = w.plats[f.ledge.p];
             if (!p || !p.alive) {
@@ -678,6 +755,8 @@
             f.vy = 0;
         else if (f.atk && f.atk.kind === 'dive')
             f.vy = Math.max(f.vy, 760);                // the dive holds its 45-degree line
+        else if (f.atk && f.atk.kind === 'pound')
+            f.vy = Math.max(f.vy, 1400);
         else if (!f.ground || f.vy < 0)
             f.vy = Math.min(C.FALL_MAX, f.vy + grav * dt);
         if (f.dashT > 0)
@@ -716,6 +795,25 @@
         }
         // platforms: land on top (one-way ones can be jumped through from below)
         f.ground = false;
+        if (f.st === 'ko' && f.vy >= 0 && !f.rest) {
+            for (const p of w.plats) {
+                if (p.alive && oldY <= p.y + 2 && f.y >= p.y && f.x >= p.x - 6 && f.x <= p.x + p.w + 6) {
+                    f.y = p.y;
+                    if (f.bounces++ < 1 && impact > 300) {
+                        f.vy = -impact * 0.35; f.vx *= 0.5;
+                        w.events.push({type: 'thud', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
+                    } else {                          // settled: lying flat
+                        f.vy = 0; f.vx = 0; f.rest = true; f.spinV = 0;
+                        f.spin = (Math.abs(f.spin % (2 * Math.PI)) < Math.PI ? 1 : -1) * Math.PI / 2 * Math.sign(f.face || 1);
+                    }
+                    break;
+                }
+            }
+        }
+        if (f.rest) {
+            f.vx = f.vy = 0;
+            return;
+        }
         if (f.st !== 'ko' && f.vy >= 0) {
             for (const p of w.plats) {
                 if (!p.alive || (p.oneWay && f.drop > 0))
@@ -731,15 +829,38 @@
                 f.climbStart = w.time;
             else if (f.climbStart !== undefined) {
                 w.events.push({type: 'climb', id: f.id, x: Math.round(f.x), y: Math.round(f.y),
-                    t: Math.round((w.time - f.climbStart) * 10) / 10});
+                    t: Math.round((w.time - f.climbStart) * 100) / 100});
                 f.climbStart = undefined;
             }
         }
+        if (f.ground && !wasGround && f.plat && f.plat.floor && f.climbStart !== undefined) {
+            f.climbStart = undefined;                 // back on the floor: the climb's clock resets
+            w.events.push({type: 'climbReset', id: f.id});
+        }
         if (f.ground && !wasGround) {
-            f.jumps = 2; f.airDash = true; f.juggle = 0;
+            f.jumps = 2; f.airDash = true; f.juggle = 0; f.noGrab = undefined;
             if (f.atk && f.atk.kind === 'dive')
                 f.atk = null;
-            if (f.st === 'tumble') {                      // a ragdoll lands: back on its feet
+            if (f.atk && f.atk.kind === 'pound') {      // the pound lands: a shockwave along the floor
+                f.atk = null;
+                for (const o of w.fighters) {
+                    if (o === f || !o.ground || o.st === 'ko' || o.inv > 0 || o.shield > 0 || o.ghost ||
+                        Math.abs(o.x - f.x) > 150 || Math.abs(o.y - f.y) > 30)
+                        continue;
+                    o.vy = -460; o.vx = Math.sign(o.x - f.x || 1) * 260; o.ground = false; o.stun = 0.4; o.st = 'hurt';
+                    o.atk = null; o.blocking = false;
+                    if (!w.noDamage && !o.dummy) {
+                        o.hp = Math.max(1, o.hp - 5);
+                    }
+                }
+                w.events.push({type: 'pound', x: Math.round(f.x), y: Math.round(f.y)});
+            }
+            if (f.st === 'tumble' && w.time - (f.techAt ?? -9) < 0.25) {   // a breakfall: roll and up
+                f.st = 'dash'; f.spin = 0; f.stun = 0; f.inv = Math.max(f.inv, fr(8)); f.dashT = fr(8);
+                f.techAt = -9;
+                w.events.push({type: 'tech', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
+                callout(w, f, 'TECH!');
+            } else if (f.st === 'tumble') {               // a ragdoll lands: back on its feet
                 if (impact > 700) {
                     f.vy = -impact * 0.3; f.ground = false;   // one bounce first
                     w.events.push({type: 'thud', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
@@ -755,7 +876,7 @@
         if (!f.ground && f.vy > 0 && f.st !== 'tumble' && f.st !== 'ko' && f.stun <= 0 && f.ledgeCd <= 0 && !f.atk &&
             !f.dummy) {
             w.plats.forEach((p, i) => {
-                if (f.ledge || !p.alive || p.floor || p.solid)
+                if (f.ledge || !p.alive || p.floor || p.solid || i === f.noGrab)
                     return;
                 for (const side of [-1, 1]) {
                     const edge = side < 0 ? p.x : p.x + p.w;
@@ -865,9 +986,11 @@
                 if (strike) {                          // a punch or a kick sends it flying
                     const d = f.atk.dir || {x: f.face, y: -0.3};
                     b.vx = (d.x || f.face) * 1100; b.vy = Math.min(-420, (d.y || 0) * 900 - 380);
+                    b.by = f.id;
                     w.events.push({type: 'kick', x: Math.round(b.x), y: Math.round(b.y)});
                 } else {                               // a dash, or just walking into it
                     b.vx = dir * Math.max(Math.abs(f.vx) * (f.dashT > 0 ? 1.4 : 1.1), 180);
+                    b.by = f.id;
                     if (b.vy >= 0)
                         b.vy = -Math.max(120, Math.abs(f.vx) * 0.3);
                 }
@@ -1161,12 +1284,38 @@
             body = 0.55; lThigh = 1.0; lShin = -0.4; rThigh = -0.9; rShin = -1.0; lArm = -1.4; rArm = -1.2;
             lFore = -0.2; rFore = -0.2;
             break;
-        case 'ledge':
-            lArm = 2.9; rArm = 2.7; lFore = 0; rFore = 0; lThigh = -0.1; rThigh = 0.2; lShin = 0; rShin = 0.3; body = -0.1;
+        case 'ledge': {                            // hands on the lip, body hanging, swaying a little
+            const sway = Math.sin(t * 2.2) * 0.08;
+            lArm = 2.9; rArm = 2.7; lFore = 0; rFore = 0; body = -0.1 + sway;
+            lThigh = -0.1 - sway; rThigh = 0.2 - sway; lShin = 0.05; rShin = 0.3;
             break;
+        }
+        case 'mantle': {                           // 1: elbows bend; 2: a knee hooks up; 3: standing
+            const k = p;
+            if (k < 0.36) {
+                const u = k / 0.36;
+                lArm = 2.9 - 0.9 * u; rArm = 2.7 - 0.9 * u; lFore = -1.6 * u; rFore = -1.6 * u; body = -0.1 + 0.2 * u;
+                lThigh = 0; rThigh = 0.2; lShin = 0.1; rShin = 0.3;
+            } else if (k < 0.73) {
+                const u = (k - 0.36) / 0.37;
+                lArm = 2.0 - 1.2 * u; rArm = 1.8 - 1.2 * u; lFore = -1.6; rFore = -1.6; body = 0.1 + 0.4 * u;
+                lThigh = 1.6 * u; lShin = -1.8 * u; rThigh = 0.2; rShin = 0.3;
+            } else {
+                const u = (k - 0.73) / 0.27;
+                lArm = 0.8 - 0.6 * u; rArm = 0.6; lFore = -1.0; rFore = -1.0; body = 0.5 * (1 - u);
+                lThigh = 1.6 * (1 - u); lShin = -1.8 * (1 - u); rThigh = 0.2 * (1 - u); rShin = 0.3 * (1 - u);
+            }
+            break;
+        }
         case 'hurt':
             body = -0.45; lArm = -2.2; rArm = 2.2; lFore = -0.8; rFore = 0.8; lThigh = 0.3; rThigh = -0.3;
             break;
+        case 'victory': {                          // both fists up, pumping
+            const pump = Math.sin(t * 6);
+            lArm = 2.7 + 0.25 * pump; rArm = 2.9 - 0.25 * pump; lFore = -0.3; rFore = 0.2;
+            body = -0.05; lThigh = -0.2; rThigh = 0.2;
+            break;
+        }
         case 'block':                              // crouched, both forearms up in front of the face
             body = -0.05; rArm = 2.3; rFore = -1.5; lArm = 2.0; lFore = -1.3;
             lThigh = 0.6; lShin = -0.9; rThigh = -0.2; rShin = 0.7;
@@ -1193,6 +1342,17 @@
             break;
         case 'dive':                               // a diving kick, 45 degrees down
             body = 0.5; lThigh = 0.9; rThigh = 0.2; lShin = 0; rShin = -1.3; lArm = -2.4; rArm = -2.0;
+            break;
+        case 'lunge':                              // a long step behind a locked-out straight
+            rArm = 1.57; rFore = 0; lArm = -0.4; lFore = -1.4; body += 0.35 * out; lThigh = -0.7 * out; rThigh = 0.9 * out;
+            rShin = -0.3 * out;
+            break;
+        case 'sweep':                              // down low, the lead leg swings out along the floor
+            body = 0.6; lArm = -0.6; rArm = 0.6; lFore = -1.2; rFore = -1.2;
+            lThigh = 0.9; lShin = -1.6; rThigh = 1.57 * (0.4 + 0.6 * out); rShin = 0;
+            break;
+        case 'pound':                              // knees up, fists down: straight onto them
+            body = 0.1; lArm = 0.3; rArm = -0.3; lFore = 0; rFore = 0; lThigh = 1.2; lShin = -1.6; rThigh = 1.0; rShin = -1.4;
             break;
         case 'grab':                               // both hands out to grab
             rArm = 1.5; lArm = 1.3; rFore = -0.1 * (1 - out); lFore = -0.2; body += 0.2 * out;

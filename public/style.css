@@ -147,3 +147,22 @@ body.touch #movesBtn { top: 12px; bottom: auto; right: 12px; left: auto; transfo
 body.touch #movesBtn .txt, body.touch #movesBtn kbd { display: none; }
 body.touch #movesBtn { padding: 4px 10px; font-size: 14px; }
 body.touch #emojis { top: 10px; right: 60px; bottom: auto; transform: none; flex-direction: row; }
+
+/* the winner's card: centred, frosted, nothing else on screen */
+#podium { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.96); z-index: 12; width: min(420px, calc(100vw - 32px));
+          padding: 22px 24px; border-radius: 16px; background: rgba(13, 17, 23, 0.88); border: 1px solid var(--line-2);
+          backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); text-align: center; opacity: 0;
+          transition: opacity 300ms, transform 300ms cubic-bezier(.2,.8,.2,1); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 100vmax rgba(0, 0, 0, 0.35); }
+#podium.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+#podium .top { font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: var(--gold); }
+#podium canvas { display: block; margin: 6px auto 0; width: 220px; height: 200px; }
+#podium .name { font-size: 30px; font-weight: 800; margin: 2px 0 8px; }
+#podium .stats { color: var(--dim); font-size: 13px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; }
+#podium .stats span { white-space: nowrap; }
+#podium .stats b { color: var(--text); }
+#podium .pill { display: inline-block; margin-top: 14px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line-2);
+                font-size: 12px; color: var(--dim); }
+/* the cinematic: the HUD steps aside */
+body.cinematic #info, body.cinematic #board, body.cinematic #emojis, body.cinematic #commands, body.cinematic #feed,
+body.cinematic #combo, body.cinematic #movesBtn, body.cinematic #vote, body.cinematic #touch { opacity: 0; pointer-events: none; }
+#info, #board, #emojis, #commands, #feed, #movesBtn, #touch { transition: opacity 250ms; }

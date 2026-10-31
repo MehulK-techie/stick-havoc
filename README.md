@@ -47,9 +47,14 @@ has joined (their names over their heads). Three stations:
   strings J, J, uppercut into a dive spike. `B` switches Medium / Hard
   (Hard reacts in about 60 ms and parries). `Esc` or `P` stops. When the
   host starts a match, sparring ends at once and you're in.
-- **The ball**: punch it, kick it, dash into it: lobby football.
-- **Parkour tower** (top right): start on the lit step and climb to the
-  finish pad at the ceiling: `CLIMB TIME: X.Xs`.
+- **The ball**: punch it, kick it, dash into it: lobby football, with a
+  goal against the right wall. A goal sets off confetti and an air horn,
+  `GOAL!`, and counts on `LOBBY BALL: X GOALS` (for the session); the ball
+  drops back in the middle 1.5 s later.
+- **Parkour tower** (top right): step on `START ▲ CLIMB` and a clock runs at
+  the top right of your screen (`CLIMB: 0.00s`); reach `FINISH` for gold
+  fireworks and your time. The best run is on a plaque by the finish
+  (`RECORD: X.XXs by Name`). Drop back to the floor and the clock resets.
 - **Host console** (middle): the stadium screen high on the wall shows the
   room's settings, `PLAYERS READY` (up to 15) and the join QR. The room host (a lit
   `👑 ROOM HOST` badge and a gold ring at their feet; the first to join, and
@@ -83,7 +88,10 @@ has joined (their names over their heads). Three stations:
 | Jump, double jump, wall kick | `W`, `Space` or `↑` | ⤒ |
 | Punch string: jab, body hook, straight | `J` or `Z` (press again for the next) | J |
 | Uppercut launcher | `K`, or `↑` + `J` | K |
-| Flying kick (air) / 45° dive kick (air) | `K` / `↓` + `K` | K / ▼ + K |
+| Lunging straight (opens the string; long reach) | `→` (towards them) + `J` | stick forward + J |
+| Low sweep: knocks them down | `↓` + `J` | stick down + J |
+| Flying kick (air) · 45° dive kick (air) · ground pound (air) | `K` · `↓`+`→`+`K` · `↓`+`K` | K · stick down-forward + K · stick down + K |
+| Breakfall: tap just before you hit the floor after a launch or throw | `L` | L |
 | Dash: 10 frames invulnerable, cancels a punch's recovery | `L` or `C` | L |
 | Drop through a ledge | `↓` + jump | ▼ + ⤒ |
 | Guard (hold; just in time: parry) | `S` or `↓` | joystick down |
@@ -112,7 +120,14 @@ nearest opponent close by, as in Tekken.
   bounces off someone standing.
 - Heavy hits freeze both fighters for 60 ms, shake the screen along the
   blow, and ragdoll the victim until they land. Hard hits bounce off walls.
-- Fall just past a ledge and you catch it (a second of invulnerability).
+- Fall just past a ledge and you catch it (a second of invulnerability),
+  hanging by your hands. Jump or up: a 220 ms mantle (chest up to the lip,
+  a knee hooked over, weight forward, standing). Down: let go, with a small
+  push, and that ledge won't catch you again until you land. Jump while
+  holding away from the wall: leap off backwards.
+- The ground pound lands with a shockwave that pops up anyone standing
+  close. The breakfall rolls you up with 8 invulnerable frames instead of
+  bouncing on the floor.
 - **Guard** (hold down on the ground): a fifth of the damage and no launch;
   the third blocked hit in a row breaks the guard. Raise it just as a punch
   lands and it's a **PARRY**: the attacker reels. A **grab** goes straight
@@ -127,7 +142,14 @@ nearest opponent close by, as in Tekken.
   across the arena), Laser Blaster (3 shots, with recoil), Bouncy Bomb
   (thrown: bounces twice, then blows everyone back).
 - Both fighters under 25 % and swinging at each other close up: 0.2x speed
-  for 1.2 s, the camera closes in. The K.O. freezes, flashes and shakes.
+  for 1.2 s, the camera closes in.
+- **The knockout**, in order and never on top of each other: a 120 ms
+  freeze with sparks, a second at 0.25x while the loser crumples (one
+  bounce, dust, then lying still), letterbox bars slide in and the HUD
+  steps aside, `K.O.!` springs onto the screen, then the round's result.
+  When it ends the match: the **winner's card**, their figure in a victory
+  loop, their name in their colour, `Rounds`, `Highest combo` and
+  `Finishing move`, and `Returning to lobby in 3s...`.
 
 ## Modes and maps
 

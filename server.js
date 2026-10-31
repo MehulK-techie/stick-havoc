@@ -78,6 +78,8 @@ const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'lava', 'random', 'shuffle'], 
 const SHUFFLE_WEIGHTS = {koth: 3, rumble: 3, bomb: 2, lava: 2};
 const history = [];                   // [{mode, map}], newest last
 let lastHost = null;
+let lobbyGoals = 0;                   // the lobby's football score, kept for the whole session
+let climbRecord = null;               // the parkour tower's best: {t, name}
 let scene = 'lobby';            // lobby | match
 let lobby = newLobby();
 let match = null;               // {mode, map, world, phase, phaseT, queue, active, roundWins, bomb, ...}
@@ -191,7 +193,8 @@ function startMatch() {
         history.shift();
     match = {mode, map, world: null, phase: 'countdown', phaseT: 0, queue: [], active: [], target: sel.target,
         timeLimit: sel.timer, clock: 0, weapons: sel.weapons,
-        roundWins: new Map(), bomb: null, voteClock: 0, vote: null, round: 0, winner: null, champion: null};
+        roundWins: new Map(), bomb: null, voteClock: 0, vote: null, round: 0, winner: null, champion: null,
+        bestCombo: new Map(), finisher: null};
     if (match.mode === 'koth')
         match.queue = ids.slice();
     scene = 'match';
@@ -259,7 +262,8 @@ function endRound(forced) {
     }
     if (m.winner && m.roundWins.get(m.winner) >= m.target)
         m.champion = m.winner;
-    pendingEvents.push({type: 'roundEnd', winner: m.winner, champion: m.champion});
+    pendingEvents.push({type: 'roundEnd', winner: m.winner, champion: m.champion, round: m.round,
+        stats: m.champion ? championStats(m) : null});
     setPhase(m.champion ? 'end' : 'ko');
     roster();
 }
@@ -269,7 +273,7 @@ function endRound(forced) {
 function startArcade(playerId) {
     match = {mode: 'arcade', map: P.ARENAS[0], world: null, phase: 'countdown', phaseT: 0, queue: [], active: [],
         target: 1, timeLimit: 0, clock: 0, weapons: sel.weapons, roundWins: new Map(), bomb: null, voteClock: 0,
-        vote: null, round: 0, winner: null, champion: null,
+        vote: null, round: 0, winner: null, champion: null, bestCombo: new Map(), finisher: null,
         arcade: {player: playerId, stage: 0, bot: addBot(Bot.LADDER[0]), t0: Date.now()}};
     scene = 'match';
     startRound();
@@ -285,6 +289,7 @@ function arcadeRoundEnd() {
         if (a.stage >= Bot.LADDER.length) {
             m.champion = a.player;
             pendingEvents.push({type: 'arcadeWin', time: secs});
+            pendingEvents.push({type: 'roundEnd', winner: a.player, champion: a.player, stats: championStats(m)});
             return setPhase('end');
         }
         pendingEvents.push({type: 'stageClear', stage: a.stage, time: secs,
@@ -305,6 +310,19 @@ function nextArcadeStage() {
     startRound();
     pendingEvents.push({type: 'match', mode: 'arcade', map: m.map,
         name: `STAGE ${a.stage + 1} · ${Bot.STYLES[Bot.LADDER[a.stage]].name.toUpperCase()}`});
+}
+
+// the winner's card: rounds won and the best of the rest, the longest combo, the move that ended it
+const MOVE_NAMES = {jab: 'Jab', hook: 'Body Hook', straight: 'Straight', uppercut: 'Uppercut', airkick: 'Flying Kick',
+    dive: 'Dive Kick', lunge: 'Lunging Straight', sweep: 'Low Sweep', pound: 'Ground Pound', grab: 'Throw',
+    katana: 'Katana', bat: 'Home-Run Bat', laser: 'Laser Blaster', grenade: 'Bouncy Bomb', thrown: 'Thrown Weapon'};
+
+function championStats(m) {
+    const wins = m.roundWins.get(m.champion) || (m.mode === 'arcade' ? m.arcade.stage : 0);
+    const others = [...m.roundWins].filter(([id]) => id !== m.champion).map(([, n]) => n);
+    const finisher = m.finisher && m.finisher.by === m.champion ? MOVE_NAMES[m.finisher.kind] || 'Knockout' : 'Knockout';
+    return {rounds: `${wins}-${others.length ? Math.max(...others) : 0}`, combo: m.bestCombo.get(m.champion) || 1,
+        finisher};
 }
 
 function backToLobby() {
@@ -413,6 +431,26 @@ function lobbyTick(dt) {
     lobby.events = [];
     P.step(lobby, inputs, dt);
     pendingEvents.push(...lobby.events);
+    for (const e of lobby.events) {
+        if (e.type === 'climb' && (!climbRecord || e.t < climbRecord.t)) {
+            climbRecord = {t: e.t, name: (players.get(e.id) || {}).name || '?'};
+            pendingEvents.push({type: 'record', t: e.t, name: climbRecord.name});
+        }
+    }
+    // the goal against the right wall: the ball over the line scores, then comes back after 1.5 s
+    const b = lobby.ball;
+    if (b && b.goalT !== undefined) {
+        b.goalT -= dt;
+        Object.assign(b, {x: 1570, y: 760, vx: 0, vy: 0});
+        if (b.goalT <= 0) {
+            delete b.goalT;
+            Object.assign(b, {x: P.W / 2 - 120, y: 360, vx: 0, vy: 0});     // a soft drop in the middle
+        }
+    } else if (b && b.x >= 1540 && b.y >= 650) {
+        lobbyGoals++;
+        b.goalT = 1.5;
+        pendingEvents.push({type: 'goal', x: 1560, y: 720, goals: lobbyGoals, by: b.by || null});
+    }
     // the stations: each player is told which one they stand at (the page shows its prompt)
     const st = P.MAPS.lobby.stations;
     for (const f of lobby.fighters) {
@@ -453,7 +491,7 @@ function matchTick(dt) {
         if (m.phaseT >= 3.5)
             nextArcadeStage();
     } else if (m.phase === 'end') {
-        if (m.phaseT >= 5)
+        if (m.phaseT >= 7.5)                 // the K.O., then the winner's card with its countdown
             return backToLobby();
     }
     const w = m.world;
@@ -467,6 +505,12 @@ function matchTick(dt) {
         inputs[p.id] = m.phase === 'fight' ? p.input : {k: 0, aim: null};
     w.events = [];
     P.step(w, inputs, dt);
+    for (const e of w.events) {           // for the winner's card: the best combo, the finishing blow
+        if (e.type === 'combo')
+            m.bestCombo.set(e.by, Math.max(m.bestCombo.get(e.by) || 0, e.n));
+        if (e.type === 'ko' && e.by !== null && e.by !== undefined)
+            m.finisher = {by: e.by, kind: e.kind};
+    }
     if (m.phase === 'fight') {
         if (m.mode === 'bomb')
             bombTick(dt);
@@ -519,10 +563,11 @@ function snapshot() {
         heat: w.floorLava ? {hot: r1(w.hot), next: r1(w.hotT)} : null,
         f: w.fighters.filter(f => f.st !== 'gone').map(f => [
             f.id, Math.round(f.x), Math.round(f.y), Math.round(f.vx), Math.round(f.vy), f.face, Math.ceil(f.hp), f.st,
-            f.atk ? f.atk.kind : 0, f.atk ? r1(f.atk.t / f.atk.move.dur) : 0, f.combo,
+            f.atk ? f.atk.kind : 0, f.atk ? r1(f.atk.t / f.atk.move.dur) : f.mantle ? r1(f.mp || 0) : 0, f.combo,
             f.inv > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, r1(f.spin), f.ground ? 1 : 0,
             f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0,
-            f.ghost ? 1 : 0]),
+            f.ghost ? 1 : 0, f.climbStart !== undefined ? Math.round((w.time - f.climbStart) * 100) / 100 : -1]),
+        goals: lobbyGoals, record: climbRecord, ballOut: !!(w.ball && w.ball.goalT !== undefined),
         cr: w.crates.map(c => [Math.round(c.x), Math.round(c.y), c.kind, c.landed ? 1 : 0]),
         sh: w.shots.map(s => [Math.round(s.x), Math.round(s.y), s.kind, Math.round(s.vx)]),
         tl: m && m.timeLimit ? Math.max(0, Math.ceil(m.timeLimit - m.clock)) : null,

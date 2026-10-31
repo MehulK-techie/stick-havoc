@@ -113,6 +113,11 @@ const Sfx = (() => {
         zap: () => { tone('sawtooth', 1200, 300, 0.15, 0.25); },
         laser: () => { tone('square', 1800, 400, 0.16, 0.18); },
         bounce: () => tone('sine', 420, 300, 0.06, 0.2),
+        airhorn: () => {                       // three blasts of a party horn
+            for (const d of [0, 0.22, 0.44])
+                for (const f of [466, 587, 698]) tone('sawtooth', f, f * 1.01, 0.18, 0.08, d);
+        },
+        firework: () => { noise(0.4, 'bandpass', 3000, 600, 0.3, 1.5); tone('sine', 1800, 900, 0.3, 0.08); },
         warp: () => { tone('sine', 200, 1600, 0.25, 0.25); noise(0.25, 'bandpass', 600, 6000, 0.2, 2); },
         claim: () => { for (const [f, d] of [[880, 0], [1175, 0.07], [1568, 0.14]]) tone('triangle', f, f, 0.18, 0.16, d); },
         kick: () => { tone('sine', 260, 120, 0.1, 0.4); },

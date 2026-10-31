@@ -2,7 +2,8 @@
 //   node test/shot.js OUT_DIR
 // Walks a player through it with real key presses: lobby.png, drawer.png
 // (the wardrobe), settings.png (the host console), moves.png, spar.png
-// (practice bot), match.png (the Magma Foundry), phone.png (touch controls).
+// (practice bot), match.png (the Magma Foundry), ko.png (the K.O. cinematic),
+// podium.png (the winner's card), phone.png (touch controls).
 'use strict';
 const {spawn} = require('child_process');
 const fs = require('fs'), os = require('os'), path = require('path');
@@ -44,6 +45,16 @@ async function shot(ctx, name) {
         const keys = (...seq) => call('input.performActions', {context: ctx, actions: [{type: 'key', id: 'kb', actions: seq}]});
         const hold = (key, ms) => keys({type: 'keyDown', value: key}, {type: 'pause', duration: ms}, {type: 'keyUp', value: key});
         const tap = key => keys({type: 'keyDown', value: key}, {type: 'keyUp', value: key});
+        const js = expression => call('script.evaluate', {expression, target: {context: ctx}, awaitPromise: false});
+        const waitFor = async (expression, ms) => {
+            for (let t = 0; t < ms; t += 250) {
+                const r = await js(expression);
+                if (r && r.result && r.result.value === true)
+                    return true;
+                await sleep(250);
+            }
+            return false;
+        };
         await call('browsingContext.navigate', {context: ctx, url: 'http://127.0.0.1:3998/?name=Tester', wait: 'complete'});
         await sleep(2500);
         await shot(ctx, 'lobby.png');
@@ -72,9 +83,20 @@ async function shot(ctx, name) {
             await tap('\uE004');          // Tab x4 at the console: the Magma Foundry
         await tap('e');
         await sleep(400);
+        await js(`[...document.querySelectorAll('#sRows button')].find(b => b.textContent === 'First to 3').click()`);
+        await sleep(300);
         await tap('\uE007');              // Enter: start (alone: against the training bot)
         await sleep(9000);
         await shot(ctx, 'match.png');
+        // standing still, Tester loses three rounds: the K.O. cinematic, then the winner's card
+        if (await waitFor(`document.body.classList.contains('cinematic')`, 90000)) {
+            await sleep(700);
+            await shot(ctx, 'ko.png');
+        }
+        if (await waitFor(`document.getElementById('podium').classList.contains('show')`, 150000)) {
+            await sleep(900);
+            await shot(ctx, 'podium.png');
+        }
         // a phone, sideways, with the touch pads
         await call('browsingContext.setViewport', {context: ctx, viewport: {width: 860, height: 412}});
         await call('browsingContext.navigate', {context: ctx, url: 'http://127.0.0.1:3998/?name=Phone&touch=1', wait: 'complete'});

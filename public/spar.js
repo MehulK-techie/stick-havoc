@@ -60,7 +60,7 @@ const Spar = (() => {
             hz: null, hzT: 0, vote: null, bomb: null, beam: null, ball: null, lavaY: null, tunnel: null, heat: null,
             pl: w.plats.map(p => [p.alive ? 1 : 0, 0, 0, p.solid ? p.hp : 0, Math.round(p.x), Math.round(p.y)]),
             f: w.fighters.filter(f => f.st !== 'gone').map(f => [f.id, Math.round(f.x), Math.round(f.y), Math.round(f.vx),
-                Math.round(f.vy), f.face, Math.ceil(f.hp), f.st, f.atk ? f.atk.kind : 0, f.atk ? r1(f.atk.t / f.atk.move.dur) : 0,
+                Math.round(f.vy), f.face, Math.ceil(f.hp), f.st, f.atk ? f.atk.kind : 0, f.atk ? r1(f.atk.t / f.atk.move.dur) : f.mantle ? r1(f.mp || 0) : 0,
                 f.combo, f.inv > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, r1(f.spin), f.ground ? 1 : 0,
                 f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0, 0]),
             cr: [], sh: w.shots.map(x => [Math.round(x.x), Math.round(x.y), x.kind, Math.round(x.vx)]), an: [],

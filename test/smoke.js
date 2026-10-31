@@ -112,6 +112,22 @@ async function brawl(fighters, ms) {
     }
     check('the dummy pops damage numbers', seen.has('pop'));
     check('a lobby hit costs nobody health', last.f.every(f => f[6] === 100));
+    // ---------------- lobby football: the goal against the right wall
+    seen = new Set();
+    for (let t = 0; t < 40000 && !seen.has('goal'); t += 60) {
+        const me = a.me(), ball = last.ball;
+        if (me && ball && !last.ballOut) {
+            const target = ball[0] - 50;              // stand just behind it, facing the goal, and punch
+            let k = 0;
+            if (Math.abs(me[1] - target) > 14) k = me[1] < target ? P.IN.RIGHT : P.IN.LEFT;
+            else if (me[5] < 0) k = P.IN.RIGHT;
+            else if ((t / 60) % 3 === 0) k = P.IN.LIGHT;
+            a.send({t: 'in', k});
+        }
+        await sleep(60);
+    }
+    a.send({t: 'in', k: 0});
+    check('the ball goes in: GOAL!, and the lobby score counts it', seen.has('goal') && last.goals >= 1);
     // ---------------- the host's console
     await walkTo(b, P.MAPS.lobby.stations.console.x);
     b.send({t: 'console', do: 'start'}); await sleep(300);

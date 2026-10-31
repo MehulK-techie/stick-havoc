@@ -60,6 +60,7 @@ const Lobby = (() => {
         dummyPost(ctx);
         dojo(ctx, t);
         parkour(ctx);
+        goal(ctx, t);
     }
 
     function wardrobe(ctx, t) {
@@ -186,8 +187,39 @@ const Lobby = (() => {
         label(ctx, 'DOJO · PRACTICE BOT', x, y - 150);
     }
 
-    // the parkour tower: where the clock starts and stops
+    // the football goal against the right wall, and the lobby's score
+    function goal(ctx, t) {
+        const x = 1540, y = 650, h = 150;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';      // the net
+        ctx.lineWidth = 1;
+        for (let gx = x; gx <= W; gx += 12) {
+            ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx, y + h); ctx.stroke();
+        }
+        for (let gy = y; gy <= y + h; gy += 12) {
+            ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(W, gy); ctx.stroke();
+        }
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = 10 + 4 * Math.sin(t * 3);
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(x, y + h); ctx.lineTo(x, y); ctx.lineTo(W, y); ctx.stroke();
+        ctx.restore();
+        ctx.textAlign = 'center';
+        ctx.font = '700 12px system-ui, sans-serif';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`LOBBY BALL: ${state.goals || 0} GOAL${state.goals === 1 ? '' : 'S'}`, 1490, y - 14);
+    }
+
+    // the parkour tower: where the clock starts and stops, and the best run so far
     function parkour(ctx) {
+        if (state.record) {
+            const finish = MAPS.lobby.plats.find(p => p.parkour === 'finish');
+            ctx.textAlign = 'right';
+            ctx.font = '700 11px ui-monospace, monospace';
+            ctx.fillStyle = '#facc15';
+            ctx.fillText(`RECORD: ${state.record.t.toFixed(2)}s by ${state.record.name}`, finish.x - 10, finish.y + 4);
+        }
         for (const p of MAPS.lobby.plats) {
             if (!p.parkour)
                 continue;
@@ -195,7 +227,11 @@ const Lobby = (() => {
             ctx.fillRect(p.x, p.y - 3, p.w, 3);
             ctx.textAlign = 'center';
             ctx.font = '700 10px system-ui, sans-serif';
-            ctx.fillText(p.parkour === 'finish' ? 'FINISH' : 'START ▲ CLIMB', p.x + p.w / 2, p.y - 10);
+            // the finish sits under the top-right buttons, so its label hangs below the platform
+            if (p.parkour === 'finish')
+                ctx.fillText('FINISH', p.x + p.w / 2, p.y + 16);
+            else
+                ctx.fillText('START ▲ CLIMB', p.x + p.w / 2, p.y - 10);
         }
     }
 
@@ -272,6 +308,6 @@ const Lobby = (() => {
             rot: (Math.random() - 0.5) * 0.3, color: ev.color});
     }
 
-    const state = {near: null, sel: null, ready: 0, max: 10, starting: null, version: null};
+    const state = {near: null, sel: null, ready: 0, max: 10, starting: null, version: null, goals: 0, record: null};
     return {back, front, pop, drawPops, state};
 })();

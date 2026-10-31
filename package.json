@@ -1,6 +1,6 @@
 {
   "name": "stick-havoc",
-  "version": "1.0.0",
+  "version": "1.2.0-tournament",
   "description": "Stick Havoc: Tournament Edition. Offline LAN stick-figure brawler for 2-10 players in any browser.",
   "main": "server.js",
   "scripts": {
@@ -8,10 +8,17 @@
     "test": "node test/physics.js && node test/smoke.js"
   },
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "express": "^4.21.2",
     "qrcode-terminal": "^0.12.0",
     "ws": "^8.18.0"
+  },
+  "author": "Mehul (MehulK-techie)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MehulK-techie/stick-havoc"
   }
 }

@@ -54,10 +54,10 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5
 @keyframes feedIn { from { transform: translateX(-8px); opacity: 0; } }
 @media (max-width: 900px) { #commands { display: none; } }
 
-/* the wardrobe drawer */
-#drawer { position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(340px, calc(100vw - 24px)); padding: 18px;
+/* the drawers: the wardrobe and the match settings */
+.drawer { position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(340px, calc(100vw - 24px)); padding: 18px;
           z-index: 8; overflow-y: auto; transform: translateX(calc(100% + 24px)); transition: transform 220ms cubic-bezier(.2,.8,.2,1); }
-#drawer.open { transform: none; }
+.drawer.open { transform: none; }
 #drawer h2 { margin: 0 0 2px; font-size: 18px; }
 #drawer .sub { color: var(--dim); margin: 0 0 16px; font-size: 12px; }
 #drawer section { margin-bottom: 18px; }
@@ -73,16 +73,69 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5
 #dDone { width: 100%; margin-top: 4px; font-weight: 700; padding: 10px; background: rgba(34, 211, 238, 0.16); border-color: var(--accent); }
 
 /* touch */
-#touch { position: fixed; inset: auto 0 0 0; height: 46vh; z-index: 4; pointer-events: none; }
-#touch .pad { position: absolute; bottom: 16px; display: grid; gap: 10px; pointer-events: auto; }
-#touch .l { left: 16px; grid-template-columns: repeat(3, 58px); grid-template-rows: repeat(2, 58px); }
-#touch .r { right: 16px; grid-template-columns: repeat(3, 62px); grid-template-rows: repeat(2, 62px); }
-#touch button { width: 100%; height: 100%; border-radius: 50%; font-size: 18px; font-weight: 700; padding: 0;
-                background: rgba(30, 41, 59, 0.6); touch-action: none; }
-#touch button.down { background: rgba(34, 211, 238, 0.3); border-color: var(--accent); }
+#touch { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+#touch .stickzone { position: absolute; left: 0; bottom: 0; width: 45%; height: 62%; pointer-events: auto; touch-action: none; }
+#touch .base { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%;
+               border: 1px solid var(--line-2); background: rgba(30, 41, 59, 0.35); display: none; }
+#touch .knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%;
+               background: rgba(226, 232, 240, 0.28); border: 1px solid var(--line-2); }
+#touch .hint { position: absolute; left: 24px; bottom: 24px; color: var(--dim); font-size: 12px; }
+#touch .btn { position: absolute; border-radius: 50%; pointer-events: auto; touch-action: none; padding: 0;
+              background: rgba(30, 41, 59, 0.55); border: 1px solid var(--line-2); font-weight: 800; color: var(--text);
+              display: grid; place-items: center; line-height: 1.05; }
+#touch .btn small { display: block; font-size: 9px; font-weight: 600; color: var(--dim); letter-spacing: 0.05em; }
+#touch .btn.pill { border-radius: 999px; font-size: 13px; }
+#touch .btn.down { background: rgba(34, 211, 238, 0.32); border-color: var(--accent); transform: scale(0.95); }
 body.touch #emojis { bottom: auto; top: 50%; transform: translateY(-50%); }
 body.touch #info, body.touch #board { font-size: 11px; padding: 6px 8px; min-width: 0; }
 body.touch #feed { display: none; }
-#rotate { position: fixed; left: 50%; top: 40%; transform: translateX(-50%); padding: 10px 16px; z-index: 6; font-weight: 600;
-          display: none; }
-@media (orientation: portrait) { body.touch #rotate { display: block; } }
+
+
+/* the creator's badge (lobby only) */
+#brand { position: fixed; top: 12px; left: 12px; padding: 8px 12px; z-index: 5; }
+#brand .b1 { font-weight: 800; letter-spacing: 0.08em; font-size: 12px; }
+#brand .b1 .sep { color: var(--dim); }
+#brand .b2 { margin-top: 3px; font-size: 11px; }
+#brand .b3 { display: flex; gap: 5px; margin-top: 5px; font-size: 10px; }
+body.touch #brand .b2, body.touch #brand .b3 { display: none; }
+body.touch #brand { padding: 5px 9px; }
+#brand a { color: var(--accent); text-decoration: none; }
+#brand a:hover { text-decoration: underline; }
+.tag { padding: 1px 6px; border: 1px solid var(--line-2); border-radius: 5px; color: var(--dim); font-weight: 600; }
+body.in-match #brand { display: none; }
+#movesBtn { position: fixed; top: 12px; right: 12px; z-index: 6; font-weight: 600; font-size: 12px; padding: 6px 10px; }
+body.in-match #movesBtn { top: auto; bottom: 12px; right: auto; left: 50%; transform: translateX(calc(-50% + 420px)); }
+@media (max-width: 1200px) { body.in-match #movesBtn { left: auto; right: 12px; transform: none; bottom: 140px; } }
+body.touch #movesBtn { top: 12px; bottom: auto; right: 12px; left: auto; transform: none; }
+/* the move list */
+#moves { background: rgba(15, 20, 32, 0.98); position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 9; padding: 18px 20px;
+         width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; }
+#moves h2 { margin: 0 0 10px; font-size: 18px; }
+#moves table { width: 100%; border-collapse: collapse; }
+#moves td { padding: 7px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+#moves td:first-child { white-space: nowrap; width: 1%; padding-right: 14px; }
+#moves .sub { color: var(--dim); font-size: 12px; margin: 10px 0 0; }
+/* the match settings */
+#sRows .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0;
+              border-top: 1px solid var(--line); }
+#sRows .row .label { margin: 0; }
+#sRows .opts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+#sRows .opts button { font-size: 12px; padding: 4px 8px; }
+#sRows .opts button:disabled { opacity: 1; cursor: default; }
+#sRows .opts button:disabled:not(.on) { opacity: 0.4; }
+#settings > button { width: 100%; margin-top: 8px; }
+#settings .primary { font-weight: 700; background: rgba(34, 211, 238, 0.16); border-color: var(--accent); margin-top: 14px; }
+/* the combo counter, at the screen's left margin */
+#combo { position: fixed; left: 16px; top: 38%; z-index: 5; pointer-events: none; font-weight: 800; }
+#combo .n { font-size: 40px; line-height: 1; letter-spacing: -0.02em; }
+#combo .n small { font-size: 16px; color: var(--dim); margin-left: 4px; }
+#combo .d { font-size: 13px; color: var(--dim); letter-spacing: 0.06em; }
+#combo .crit { color: var(--gold); }
+#combo { transition: opacity 300ms; }
+/* the rotate prompt: a phone turning */
+#rotate { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; align-content: center;
+          background: rgba(11, 15, 23, 0.96); text-align: center; font-weight: 600; }
+#rotate .phone { width: 46px; height: 80px; border: 3px solid var(--text); border-radius: 9px; margin: 0 auto 14px;
+                 animation: turn 1.8s ease-in-out infinite; }
+@keyframes turn { 0%, 20% { transform: rotate(0); } 55%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) { body.touch #rotate { display: grid; } }

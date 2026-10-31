@@ -10,10 +10,10 @@ const Hud = (() => {
 
     // ------------------------------------------------------------ the command bar
     const COMMANDS = {
-        lobby: [['A / D', 'Move'], ['W / Space', 'Jump'], ['J', 'Punch combo'], ['K', 'Launcher'], ['L', 'Dash'],
-            ['E', 'Use']],
-        match: [['A / D', 'Move'], ['W / Space', 'Jump'], ['J', 'Punch combo'], ['K', 'Launcher'], ['L', 'Dash'],
-            ['↓ + K', 'Dive (air)']],
+        lobby: [['A / D', 'Move'], ['W', 'Jump'], ['J', 'Punch'], ['K', 'Launcher'], ['S', 'Guard'], ['G', 'Grab'],
+            ['L', 'Dash'], ['E', 'Use'], ['H', 'Moves']],
+        match: [['A / D', 'Move'], ['W', 'Jump'], ['J', 'Punch'], ['K', 'Launcher'], ['S', 'Guard'], ['G', 'Grab'],
+            ['L', 'Dash'], ['E', 'Weapon']],
     };
     let shownScene = null;
 
@@ -33,6 +33,9 @@ const Hud = (() => {
         }
         for (const id of ['info', 'board', 'emojis'])
             $(id).classList.toggle('hidden', scene !== 'match');
+        document.body.classList.toggle('in-match', scene === 'match');
+        if (scene !== 'lobby')
+            closeSettings();
         if (scene !== 'match')
             $('vote').classList.add('hidden');
     }
@@ -122,11 +125,11 @@ const Hud = (() => {
 
     // ------------------------------------------------------------ the match panels
     function match(s, roster, myId) {
-        $('iMode').textContent = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag'}[s.mode] || '';
+        $('iMode').textContent = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag',
+            arcade: '1P Arcade'}[s.mode] || '';
         $('iMap').textContent = Physics.MAPS[s.map] ? Physics.MAPS[s.map].name : '';
-        const target = s.mode === 'koth' ? 5 : s.mode === 'rumble' ? 3 : 1;
-        $('iRound').textContent = s.mode === 'bomb' ? 'Last one standing wins' :
-            `Round ${s.round} · first to ${target} win${target > 1 ? 's' : ''}`;
+        $('iRound').textContent = s.arcade ? `Stage ${s.arcade.stage} of ${s.arcade.of} · ${s.arcade.t}s` :
+            `Round ${s.round} · first to ${s.target}${s.tl !== null ? ` · ${s.tl}s left` : ''}`;
         $('iEnd').classList.toggle('hidden', s.host !== myId);
         const list = $('bList');
         list.textContent = '';
@@ -190,6 +193,100 @@ const Hud = (() => {
         b.addEventListener('click', () => send({t: 'emoji', e: b.dataset.e}));
     $('iEnd').addEventListener('click', () => send({t: 'lobby'}));
 
+    // ------------------------------------------------------------ the match settings (host console)
+    const LABELS = {
+        mode: ['Game mode', {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', random: 'Random'}],
+        target: ['Match', {3: 'First to 3', 5: 'First to 5', 7: 'First to 7'}],
+        timer: ['Round timer', {45: '45 s', 60: '60 s', 90: '90 s', 0: '∞'}],
+        weapons: ['Weapons', {true: 'On', false: 'Off'}],
+        limit: ['Player limit', null],
+        map: ['Map', null],
+    };
+    let choices = null, settingsHost = false, settingsSel = null;
+
+    function openSettings(sel, isHost, ch) {
+        choices = ch;
+        renderSettings(sel, isHost);
+        $('settings').classList.add('open');
+        Sfx.play('open');
+    }
+
+    function renderSettings(sel, isHost) {
+        if (!choices)
+            return;
+        settingsHost = isHost;
+        settingsSel = JSON.stringify(sel);
+        $('sNote').textContent = isHost ? 'You are the room host: every change shows on everyone\'s screen.' :
+            'Waiting for Host to start...';
+        $('sStart').classList.toggle('hidden', !isHost);
+        $('sArcade').classList.toggle('hidden', !isHost);
+        const rows = $('sRows');
+        rows.textContent = '';
+        for (const [key, [title, names]] of Object.entries(LABELS)) {
+            const row = document.createElement('div');
+            row.className = 'row';
+            const label = document.createElement('span');
+            label.className = 'label';
+            label.textContent = title;
+            const opts = document.createElement('div');
+            opts.className = 'opts';
+            for (const value of choices[key]) {
+                const b = document.createElement('button');
+                b.textContent = names ? names[value] : key === 'map' ? (value === 'random' ? 'Random' :
+                    Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
+                b.classList.toggle('on', sel[key] === value);
+                b.disabled = !isHost;
+                b.addEventListener('click', () => {
+                    send({t: 'settings', key, value});
+                    Sfx.play('ui');
+                });
+                opts.appendChild(b);
+            }
+            row.append(label, opts);
+            rows.appendChild(row);
+        }
+    }
+
+    // the snapshot's settings changed (the host clicked): redraw what everyone sees
+    function syncSettings(sel, isHost) {
+        if (isSettingsOpen() && (JSON.stringify(sel) !== settingsSel || isHost !== settingsHost))
+            renderSettings(sel, isHost);
+    }
+
+    function closeSettings() {
+        $('settings').classList.remove('open');
+    }
+
+    const isSettingsOpen = () => $('settings').classList.contains('open');
+    $('sStart').addEventListener('click', () => {
+        send({t: 'console', do: 'start'});
+        closeSettings();
+    });
+    $('sArcade').addEventListener('click', () => {
+        send({t: 'arcade'});
+        closeSettings();
+    });
+    $('sClose').addEventListener('click', closeSettings);
+
+    // ------------------------------------------------------------ the move list
+    const toggleMoves = force => $('moves').classList.toggle('hidden', force === undefined ? undefined : !force);
+    $('movesBtn').addEventListener('click', () => toggleMoves());
+    $('moves').addEventListener('click', () => toggleMoves(false));
+
+    // ------------------------------------------------------------ the combo counter
+    let comboTimer = 0;
+    function combo(n, dmg, crit, color) {
+        const el = $('combo');
+        el.innerHTML = `<div class="n" style="color:${color}">${n}<small>HITS</small></div>` +
+            `<div class="d">${dmg} DMG${crit ? ' · <span class="crit">CRITICAL!</span>' : ''}</div>`;
+        el.classList.remove('hidden');
+        el.style.opacity = '1';
+        clearTimeout(comboTimer);
+        comboTimer = setTimeout(() => {
+            el.style.opacity = '0';
+        }, 1600);
+    }
+
     let toastTimer = 0;
     function toast(text, ms = 2600) {
         const el = $('toast');
@@ -202,5 +299,6 @@ const Hud = (() => {
     return {
         init(sender) { send = sender; },
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast,
+        openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo,
     };
 })();

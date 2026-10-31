@@ -102,6 +102,17 @@ const Sfx = (() => {
             tone('sine', 60, 25, 1.4, 1.0); noise(1.2, 'lowpass', 3000, 60, 0.9);
             tone('sawtooth', 90, 30, 0.6, 0.2);
         },
+        // guarding, grabbing, weapons
+        block: () => { tone('triangle', 520, 380, 0.08, 0.25); noise(0.05, 'bandpass', 2500, 1800, 0.2, 3); },
+        parry: () => { tone('triangle', 1320, 1760, 0.18, 0.3); tone('sine', 2640, 2640, 0.25, 0.12, 0.04); },
+        guardbreak: () => { tone('square', 300, 90, 0.3, 0.3); noise(0.25, 'lowpass', 2400, 300, 0.4); },
+        grab: () => noise(0.08, 'bandpass', 800, 400, 0.25, 2),
+        crate: () => { tone('sine', 660, 880, 0.12, 0.15); tone('sine', 880, 1100, 0.12, 0.12, 0.12); },
+        pickup: () => { tone('triangle', 660, 1320, 0.12, 0.2); },
+        slash: () => { noise(0.12, 'highpass', 4000, 9000, 0.35); tone('sine', 300, 120, 0.1, 0.4); },
+        zap: () => { tone('sawtooth', 1200, 300, 0.15, 0.25); },
+        laser: () => { tone('square', 1800, 400, 0.16, 0.18); },
+        bounce: () => tone('sine', 420, 300, 0.06, 0.2),
         hazard: () => { for (const [f, d] of [[300, 0], [450, 0.1], [600, 0.2]]) tone('sawtooth', f, f * 1.5, 0.25, 0.12, d); },
     };
 

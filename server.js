@@ -16,13 +16,14 @@ const qrcodeTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode-terminal/vendor/QRCode');
 const QRLevel = require('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel');
 const P = require('./public/physics.js');
+const Bot = require('./public/bot.js');
+const VERSION = require('./package.json').version;
 
 const PORT = Number(process.env.PORT) || 3000;
 const TPS = 30;
 const MAX_PLAYERS = 10;
 const VOTE_EVERY = Number(process.env.VOTE_EVERY) || 45, VOTE_FOR = 5, HAZARD_FOR = 15;   // seconds
 const BOMB_FUSE = Number(process.env.BOMB_FUSE) || 20;
-const KOTH_TARGET = 5, RUMBLE_TARGET = 3;                // wins that end a match
 const EMOJIS = ['🔥', '💀', '🤡', '🚀'];
 const COLOR_VALUES = P.COLORS.map(c => c[1]);
 const STATION_REACH = 90;
@@ -68,7 +69,11 @@ const wss = new WebSocketServer({server, maxPayload: 2048});
 // ---------------------------------------------------------------- the room
 let nextId = 1;
 const players = new Map();      // id -> {id, ws, name, color, gear, wins, joined, input, bot}
-const sel = {mode: 'koth', map: 'rooftops'};    // what the host has picked
+// the room's settings: the host changes them at the console
+const sel = {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: MAX_PLAYERS};
+const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'random'], map: [...P.ARENAS, 'random'], target: [3, 5, 7],
+    timer: [45, 60, 90, 0], weapons: [true, false], limit: [2, 3, 4, 5, 6, 7, 8, 9, 10]};
+let lastHost = null;
 let scene = 'lobby';            // lobby | match
 let lobby = newLobby();
 let match = null;               // {mode, map, world, phase, phaseT, queue, active, roundWins, bomb, ...}
@@ -121,16 +126,21 @@ function lobbySpawn(p) {
     lobby.fighters.push(f);
 }
 
-// ---------------------------------------------------------------- the training bot
-// Alone in King of the Hill, you spar with a bot until a second person is in.
+// ---------------------------------------------------------------- bots
+// a computer fighter (bot.js plays it): the training bot, or an arcade opponent
+function addBot(style) {
+    const S = Bot.STYLES[style], id = nextId++;
+    players.set(id, {id, name: S.name, color: S.color, gear: {hat: S.hat, eyes: !!S.eyes}, joined: Date.now(),
+        input: {k: 0, aim: null}, bot: {style, mem: {}}});
+    return id;
+}
+
+// alone in King of the Hill, you spar with the training bot until a second person is in
 function ensureBot() {
-    const bots = [...players.values()].filter(p => p.bot);
+    const bots = [...players.values()].filter(p => p.bot && p.bot.style === 'training');
     const want = scene === 'match' && match.mode === 'koth' && humans().length === 1;
     if (want && !bots.length) {
-        const id = nextId++;
-        players.set(id, {id, name: 'Training Bot', color: '#94a3b8', gear: {hat: 'visor'}, joined: Date.now(),
-            input: {k: 0, aim: null}, bot: {think: 0, k: 0}});
-        match.queue.push(id);
+        match.queue.push(addBot('training'));
         roster();
     } else if (!want && bots.length) {
         for (const b of bots)
@@ -138,58 +148,15 @@ function ensureBot() {
     }
 }
 
-function botThink(p, f, w, dt) {
-    const b = p.bot;
-    b.think -= dt;
-    if (b.think > 0)
-        return;
-    b.think = 0.1 + Math.random() * 0.12;
-    const foes = w.fighters.filter(o => o.id !== f.id && o.st !== 'ko' && o.st !== 'gone' && !o.dummy);
-    if (!foes.length) {
-        p.input.k = 0;
-        return;
-    }
-    const foe = foes.reduce((a, o) => Math.abs(o.x - f.x) < Math.abs(a.x - f.x) ? o : a);
-    const dx = foe.x - f.x, dy = foe.y - f.y;
-    let k = 0;
-    if (Math.abs(dx) > 70)
-        k |= dx > 0 ? P.IN.RIGHT : P.IN.LEFT;
-    if (dy < -100 && Math.random() < 0.5)
-        k |= P.IN.JUMP;
-    if (dy > 100 && Math.random() < 0.3)
-        k |= P.IN.DOWN | P.IN.JUMP;
-    if (Math.abs(dx) < 90 && Math.abs(dy) < 80) {
-        const r = Math.random();
-        k |= r < 0.65 ? P.IN.LIGHT : r < 0.85 ? P.IN.HEAVY : P.IN.DASH;
-    }
-    // stay out of the pit: don't walk off an edge; falling with nothing below, get back
-    if (w.pit) {
-        const under = x => w.plats.some(q => q.alive && x >= q.x && x <= q.x + q.w && q.y >= f.y - 4);
-        const ahead = f.x + (k & P.IN.RIGHT ? 60 : k & P.IN.LEFT ? -60 : 0);
-        if (f.ground && !under(ahead)) {
-            const dir = k & P.IN.RIGHT ? 1 : -1;
-            const reachable = w.plats.some(q => q.alive && q.y > f.y - 260 &&
-                (dir > 0 ? q.x > f.x && q.x - f.x < 340 : f.x > q.x + q.w && f.x - (q.x + q.w) < 340));
-            if (reachable && (k & (P.IN.LEFT | P.IN.RIGHT)))
-                k |= P.IN.JUMP;                     // another platform in reach: jump the gap
-            else
-                k &= ~(P.IN.LEFT | P.IN.RIGHT);
-        } else if (!f.ground && f.vy > 0 && !under(f.x)) {
-            const home = w.plats.filter(q => q.alive).reduce((a, q) =>
-                Math.abs(q.x + q.w / 2 - f.x) < Math.abs(a.x + a.w / 2 - f.x) ? q : a);
-            k = (k & ~(P.IN.LEFT | P.IN.RIGHT)) | (home.x + home.w / 2 > f.x ? P.IN.RIGHT : P.IN.LEFT);
-            k |= f.jumps > 0 ? P.IN.JUMP : P.IN.DASH;
-        }
-    }
-    const taps = P.IN.LIGHT | P.IN.HEAVY | P.IN.JUMP | P.IN.DASH;
-    p.input.k = (b.k & taps) ? k & ~taps : k;      // let go now and then, so taps are taps
-    b.k = p.input.k;
-}
-
 // ---------------------------------------------------------------- matches
+const pick = list => list[Math.floor(Math.random() * list.length)];
+
 function startMatch() {
     const ids = humans().map(p => p.id);
-    match = {mode: sel.mode, map: sel.map, world: null, phase: 'countdown', phaseT: 0, queue: [], active: [],
+    const mode = sel.mode === 'random' ? pick(['koth', 'rumble', 'bomb']) : sel.mode;
+    const map = sel.map === 'random' ? pick(P.ARENAS) : sel.map;
+    match = {mode, map, world: null, phase: 'countdown', phaseT: 0, queue: [], active: [], target: sel.target,
+        timeLimit: sel.timer, clock: 0, weapons: sel.weapons,
         roundWins: new Map(), bomb: null, voteClock: 0, vote: null, round: 0, winner: null, champion: null};
     if (match.mode === 'koth')
         match.queue = ids.slice();
@@ -204,9 +171,14 @@ function startRound() {
     const keep = m.world && m.world.hazard ? {hazard: m.world.hazard, hazardT: m.world.hazardT} : {};
     m.world = Object.assign(P.createWorld(m.map), keep);
     m.world.noDamage = m.mode === 'bomb';
+    m.world.weapons = m.weapons || (m.mode === 'arcade' && m.arcade.stage >= 3);
     m.round++;
+    m.clock = 0;
     m.winner = null;
-    if (m.mode === 'koth') {
+    if (m.mode === 'arcade') {
+        m.active = [m.arcade.player, m.arcade.bot];
+        m.queue = humans().map(p => p.id).filter(id => id !== m.arcade.player);
+    } else if (m.mode === 'koth') {
         m.queue = m.queue.filter(id => players.has(id));
         m.active = m.active.filter(id => players.has(id));
         while (m.active.length < 2 && m.queue.length)
@@ -232,10 +204,12 @@ function setPhase(phase) {
     match.phaseT = 0;
 }
 
-function endRound() {
+function endRound(forced) {
     const m = match;
     const standing = m.world.fighters.filter(f => f.st !== 'ko' && f.st !== 'gone' && f.hp > 0);
-    m.winner = standing.length === 1 ? standing[0].id : null;
+    m.winner = forced !== undefined ? forced : standing.length === 1 ? standing[0].id : null;
+    if (m.mode === 'arcade')
+        return arcadeRoundEnd();
     if (m.winner)
         m.roundWins.set(m.winner, (m.roundWins.get(m.winner) || 0) + 1);
     if (m.mode === 'koth') {   // the loser goes to the back of the line; the winner stays
@@ -243,12 +217,54 @@ function endRound() {
         m.active = m.active.filter(id => id === m.winner);
         m.queue.push(...losers.filter(id => players.has(id)));
     }
-    const target = m.mode === 'koth' ? KOTH_TARGET : m.mode === 'rumble' ? RUMBLE_TARGET : 1;
-    if (m.winner && m.roundWins.get(m.winner) >= target)
+    if (m.winner && m.roundWins.get(m.winner) >= m.target)
         m.champion = m.winner;
     pendingEvents.push({type: 'roundEnd', winner: m.winner, champion: m.champion});
     setPhase(m.champion ? 'end' : 'ko');
     roster();
+}
+
+// ---------------------------------------------------------------- 1P arcade
+// five opponents in a row, each harder; one round each; lose and it's over
+function startArcade(playerId) {
+    match = {mode: 'arcade', map: P.ARENAS[0], world: null, phase: 'countdown', phaseT: 0, queue: [], active: [],
+        target: 1, timeLimit: 0, clock: 0, weapons: sel.weapons, roundWins: new Map(), bomb: null, voteClock: 0,
+        vote: null, round: 0, winner: null, champion: null,
+        arcade: {player: playerId, stage: 0, bot: addBot(Bot.LADDER[0]), t0: Date.now()}};
+    scene = 'match';
+    startRound();
+    pendingEvents.push({type: 'match', mode: 'arcade', map: match.map,
+        name: `STAGE 1 · ${Bot.STYLES[Bot.LADDER[0]].name.toUpperCase()}`});
+}
+
+function arcadeRoundEnd() {
+    const m = match, a = m.arcade;
+    const secs = Math.round((Date.now() - a.t0) / 1000);
+    if (m.winner === a.player) {
+        a.stage++;
+        if (a.stage >= Bot.LADDER.length) {
+            m.champion = a.player;
+            pendingEvents.push({type: 'arcadeWin', time: secs});
+            return setPhase('end');
+        }
+        pendingEvents.push({type: 'stageClear', stage: a.stage, time: secs,
+            next: Bot.STYLES[Bot.LADDER[a.stage]].name});
+        return setPhase('clear');
+    }
+    pendingEvents.push({type: 'gameOver', stage: a.stage + 1, by: Bot.STYLES[Bot.LADDER[a.stage]].name});
+    setPhase('end');
+}
+
+function nextArcadeStage() {
+    const m = match, a = m.arcade;
+    players.delete(a.bot);
+    a.bot = addBot(Bot.LADDER[a.stage]);
+    a.t0 = Date.now();
+    m.map = P.ARENAS[a.stage % P.ARENAS.length];
+    m.world = null;                       // a new arena, health restored
+    startRound();
+    pendingEvents.push({type: 'match', mode: 'arcade', map: m.map,
+        name: `STAGE ${a.stage + 1} · ${Bot.STYLES[Bot.LADDER[a.stage]].name.toUpperCase()}`});
 }
 
 function backToLobby() {
@@ -334,6 +350,12 @@ function hazards(dt) {
 
 // ---------------------------------------------------------------- the tick
 function tick(dt) {
+    const host = hostId();
+    if (host !== lastHost) {
+        if (lastHost !== null && host !== null)
+            pendingEvents.push({type: 'host', id: host});
+        lastHost = host;
+    }
     if (scene === 'lobby')
         lobbyTick(dt);
     else
@@ -385,6 +407,9 @@ function matchTick(dt) {
     } else if (m.phase === 'ko') {
         if (m.phaseT >= 3)
             startRound();
+    } else if (m.phase === 'clear') {
+        if (m.phaseT >= 3.5)
+            nextArcadeStage();
     } else if (m.phase === 'end') {
         if (m.phaseT >= 5)
             return backToLobby();
@@ -393,7 +418,7 @@ function matchTick(dt) {
     for (const f of w.fighters) {
         const p = players.get(f.id);
         if (p && p.bot)
-            botThink(p, f, w, dt);
+            p.input.k = m.phase === 'fight' ? Bot.think(f, w, p.bot.style, p.bot.mem, dt) : 0;
     }
     const inputs = {};
     for (const p of players.values())
@@ -413,7 +438,16 @@ function matchTick(dt) {
                 endRound();
             }
         }
-        hazards(dt);
+        // the round timer: at zero, the most health wins
+        m.clock += dt;
+        if (m.timeLimit && m.clock >= m.timeLimit && m.phase === 'fight' && !w.koWait && m.mode !== 'bomb') {
+            const standing = w.fighters.filter(f => f.st !== 'ko' && f.st !== 'gone').sort((a, b) => b.hp - a.hp);
+            const best = standing.length && (standing.length === 1 || standing[0].hp > standing[1].hp) ? standing[0].id : null;
+            pendingEvents.push({type: 'timeup'});
+            endRound(best);
+        }
+        if (m.mode !== 'arcade')
+            hazards(dt);
     }
     pendingEvents.push(...w.events);
 }
@@ -441,7 +475,13 @@ function snapshot() {
             f.id, Math.round(f.x), Math.round(f.y), Math.round(f.vx), Math.round(f.vy), f.face, Math.ceil(f.hp), f.st,
             f.atk ? f.atk.kind : 0, f.atk ? r1(f.atk.t / f.atk.move.dur) : 0, f.combo,
             f.inv > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, r1(f.spin), f.ground ? 1 : 0,
-            f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0]),
+            f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0]),
+        cr: w.crates.map(c => [Math.round(c.x), Math.round(c.y), c.kind, c.landed ? 1 : 0]),
+        sh: w.shots.map(s => [Math.round(s.x), Math.round(s.y), s.kind, Math.round(s.vx)]),
+        tl: m && m.timeLimit ? Math.max(0, Math.ceil(m.timeLimit - m.clock)) : null,
+        arcade: m && m.arcade ? {stage: m.arcade.stage + 1, of: Bot.LADDER.length, player: m.arcade.player,
+            t: Math.round((Date.now() - m.arcade.t0) / 1000)} : null,
+        target: m ? m.target : sel.target, version: VERSION,
         an: w.anvils.map(a => [Math.round(a.x), Math.round(a.y)]),
         q: m ? m.queue : [], act: m ? m.active : [],
         wins: m ? [...m.roundWins] : [],
@@ -490,7 +530,7 @@ function applyLook(p, m) {
 }
 
 wss.on('connection', ws => {
-    if (humans().length >= MAX_PLAYERS) {
+    if (humans().length >= Math.min(MAX_PLAYERS, sel.limit)) {
         send(ws, {type: 'full'});
         return ws.close();
     }
@@ -506,7 +546,7 @@ wss.on('connection', ws => {
     else if (match.mode === 'koth')
         match.queue.push(id);
     send(ws, {type: 'welcome', id, colors: P.COLORS, hats: P.HATS, trails: P.TRAILS, modes: P.MODES,
-        maps: P.ARENAS.map(k => [k, P.MAPS[k].name])});
+        maps: P.ARENAS.map(k => [k, P.MAPS[k].name]), choices: CHOICES, version: VERSION});
     roster();
     let budget = 120, last = Date.now();
     ws.on('message', raw => {
@@ -525,7 +565,7 @@ wss.on('connection', ws => {
             return;
         const isHost = id === hostId();
         if (m.t === 'in') {
-            me.input.k = (m.k | 0) & 511;
+            me.input.k = (m.k | 0) & 1023;
             me.input.aim = typeof m.aim === 'number' && isFinite(m.aim) ? m.aim : null;
         } else if (m.t === 'look') {
             applyLook(me, m);
@@ -538,13 +578,18 @@ wss.on('connection', ws => {
             match.vote.voters.includes(id) && !match.vote.by.has(id)) {
             match.vote.by.set(id, m.o);
             match.vote.ballots.push(m.o);
-        } else if (m.t === 'console' && isHost && scene === 'lobby' && me.near === 'console') {
-            // the host's console: Q cycles the mode, Tab the map, E starts
+        } else if (m.t === 'settings' && isHost && scene === 'lobby' && m.key in CHOICES &&
+            CHOICES[m.key].includes(m.value)) {
+            sel[m.key] = m.value;                      // everyone's wall screen shows it next tick
+            pendingEvents.push({type: 'console'});
+        } else if (m.t === 'arcade' && isHost && scene === 'lobby' && lobby.starting === undefined) {
+            startArcade(id);
+        } else if (m.t === 'console' && isHost && scene === 'lobby' && (me.near === 'console' || m.do === 'start')) {
+            // the host's console: Q cycles the mode, Tab the map, Start starts
             if (m.do === 'mode') {
-                const keys = Object.keys(P.MODES);
-                sel.mode = keys[(keys.indexOf(sel.mode) + 1) % keys.length];
+                sel.mode = CHOICES.mode[(CHOICES.mode.indexOf(sel.mode) + 1) % CHOICES.mode.length];
             } else if (m.do === 'map') {
-                sel.map = P.ARENAS[(P.ARENAS.indexOf(sel.map) + 1) % P.ARENAS.length];
+                sel.map = CHOICES.map[(CHOICES.map.indexOf(sel.map) + 1) % CHOICES.map.length];
             } else if (m.do === 'start' && lobby.starting === undefined) {
                 lobby.starting = 3;
                 pendingEvents.push({type: 'starting', mode: sel.mode, map: sel.map});

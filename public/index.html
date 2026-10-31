@@ -10,6 +10,15 @@
 <body>
 <canvas id="game"></canvas>
 
+<!-- the creator's badge (lobby) and the moves button (always) -->
+<header id="brand" class="panel">
+  <div class="b1">⚡ STICK HAVOC <span class="sep">·</span> CREATED BY MEHUL</div>
+  <div class="b2"><a href="https://github.com/MehulK-techie/stick-havoc" target="_blank" rel="noopener">GitHub: MehulK-techie/stick-havoc</a></div>
+  <div class="b3"><span class="tag" id="ver">v1.2.0-tournament</span><span class="tag">MIT License</span></div>
+</header>
+<button id="movesBtn" class="panel" title="Move list (H)">? Moves <kbd>H</kbd></button>
+<div id="combo" class="hidden"></div>
+
 <!-- in a match -->
 <div id="info" class="panel hidden">
   <div class="label" id="iMode"></div>
@@ -32,10 +41,38 @@
 <div id="commands" class="panel"></div>
 <div id="feed"></div>
 <div id="toast" class="panel hidden"></div>
-<div id="rotate" class="panel">Turn your phone sideways</div>
+<div id="rotate"><div class="phone"></div><p>Turn your phone sideways</p></div>
+
+<!-- the move list -->
+<div id="moves" class="panel hidden" role="dialog" aria-label="Move list">
+  <h2>Move list</h2>
+  <table>
+    <tr><td><kbd>J</kbd> <kbd>J</kbd> <kbd>J</kbd></td><td>3-hit string: jab, body hook, straight</td></tr>
+    <tr><td><kbd>K</kbd> or <kbd>↑</kbd>+<kbd>J</kbd></td><td>Uppercut launcher: sends them up for a juggle</td></tr>
+    <tr><td><kbd>J</kbd> while they're up</td><td>Juggle: two or three punches keep them in the air</td></tr>
+    <tr><td><kbd>K</kbd> in the air</td><td>Flying kick</td></tr>
+    <tr><td><kbd>↓</kbd>+<kbd>K</kbd> in the air</td><td>45° dive kick: spikes someone airborne, bounces off someone standing</td></tr>
+    <tr><td>hold <kbd>S</kbd> / <kbd>↓</kbd></td><td>Guard: a fifth of the damage, no launch; 3 in a row breaks it. Just in time: <b>PARRY</b></td></tr>
+    <tr><td><kbd>G</kbd></td><td>Grab &amp; throw, close up: goes through a guard</td></tr>
+    <tr><td><kbd>L</kbd></td><td>Dash: 10 invulnerable frames; cancels a punch's recovery</td></tr>
+    <tr><td><kbd>E</kbd></td><td>Pick up a crate's weapon; with one in hand, throw it. <kbd>J</kbd> uses it</td></tr>
+    <tr><td><kbd>W</kbd> twice · at a wall</td><td>Double jump · wall kick</td></tr>
+  </table>
+  <p class="sub">Hitting someone in the middle of their attack is a <b>COUNTER</b> (+25%).</p>
+</div>
+
+<!-- the host's console: the room's settings -->
+<aside id="settings" class="panel drawer" aria-label="Match settings">
+  <h2>Match settings</h2>
+  <p class="sub" id="sNote"></p>
+  <div id="sRows"></div>
+  <button id="sStart" class="primary">Start match <kbd>Enter</kbd></button>
+  <button id="sArcade">1P Arcade ladder <kbd>P</kbd></button>
+  <button id="sClose">Close <kbd>Esc</kbd></button>
+</aside>
 
 <!-- the wardrobe -->
-<aside id="drawer" class="panel" aria-label="Wardrobe">
+<aside id="drawer" class="panel drawer" aria-label="Wardrobe">
   <h2>Wardrobe</h2>
   <p class="sub">Everyone sees the change at once.</p>
   <section><span class="label">Name</span><input id="dName" maxlength="16" autocomplete="off" spellcheck="false"></section>
@@ -45,20 +82,13 @@
   <button id="dDone">Done <kbd>Esc</kbd></button>
 </aside>
 
-<div id="touch" class="hidden">
-  <div class="pad l">
-    <span></span><button data-k="4">▲</button><span></span>
-    <button data-k="1">◀</button><button data-k="8">▼</button><button data-k="2">▶</button>
-  </div>
-  <div class="pad r">
-    <button data-use="1" title="Use">E</button><button data-k="32" title="Punch">J</button><button data-k="64" title="Launcher">K</button>
-    <span></span><button data-k="128" title="Dash">L</button><button data-k="16" title="Jump">⤒</button>
-  </div>
-</div>
+<div id="touch" class="hidden"></div>
 
+<script src="weapons.js"></script>
 <script src="physics.js"></script>
 <script src="audio.js"></script>
 <script src="hud.js"></script>
+<script src="touch.js"></script>
 <script src="lobby.js"></script>
 <script src="engine.js"></script>
 </body>

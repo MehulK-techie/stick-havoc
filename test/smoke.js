@@ -105,9 +105,20 @@ async function brawl(fighters, ms) {
     check('the host at the console', a.near === 'console' && a.roster.host === a.id);
     a.send({t: 'console', do: 'mode'}); await sleep(150);
     check('Q cycles the mode', last.sel.mode === 'rumble');
-    a.send({t: 'console', do: 'mode'}); a.send({t: 'console', do: 'mode'});
+    a.send({t: 'console', do: 'mode'}); a.send({t: 'console', do: 'mode'}); a.send({t: 'console', do: 'mode'});
     a.send({t: 'console', do: 'map'}); await sleep(150);
     check('Tab cycles the map', last.sel.mode === 'koth' && last.sel.map === 'reactor');
+    // the match settings: the host sets them, everyone sees them, nobody else can
+    a.send({t: 'settings', key: 'target', value: 3}); a.send({t: 'settings', key: 'timer', value: 90});
+    b.send({t: 'settings', key: 'weapons', value: false});
+    await sleep(200);
+    check('the host settings reach everyone', last.sel.target === 3 && last.sel.timer === 90);
+    check('a non-host cannot change them', last.sel.weapons === true);
+    a.send({t: 'settings', key: 'limit', value: 3}); await sleep(150);
+    const d = new WebSocket(`ws://127.0.0.1:${PORT}`);
+    const full = await new Promise(r => { d.on('message', m => JSON.parse(m).type === 'full' && r(true)); setTimeout(() => r(false), 1500); });
+    check('the player limit turns a 4th player away', full);
+    a.send({t: 'settings', key: 'limit', value: 10}); await sleep(150);
     a.send({t: 'console', do: 'start'});
     await sleep(300);
     check('start: a countdown in the lobby', last.starting !== null);
@@ -126,6 +137,8 @@ async function brawl(fighters, ms) {
     check('a knockout', seen.has('ko'));
     check('emojis reach everyone', seen.has('emoji'));
     check('the crowd voted a hazard in', seen.has('vote') && seen.has('hazard'));
+    check('weapon crates parachute in', seen.has('crate'));
+    check('the round clock runs', typeof last.tl === 'number' && last.tl <= 90);
     await until(() => last.ph === 'ko', 4000);              // the K.O. plays out, then the next round
     await until(() => last.ph === 'countdown' || last.ph === 'fight', 6000);
     check('the loser went to the back, the next one came in', last.act.includes(queued.id) && last.q.length === 1);
@@ -141,13 +154,29 @@ async function brawl(fighters, ms) {
     seen = new Set();
     check('Bomb Tag: someone has the bomb', await until(() => last.bomb !== null, 3000));
     check('it goes off', await until(() => seen.has('boom'), 6000));
+    // ---------------- the 1P arcade ladder
+    a.send({t: 'lobby'});
+    await until(() => last.scene === 'lobby', 2000);
+    a.send({t: 'arcade'});
+    check('the arcade ladder starts', await until(() => last.scene === 'match' && last.mode === 'arcade', 3000) &&
+        last.arcade.stage === 1 && last.act.includes(a.id) && last.act.length === 2);
+    check('stage 1 is the Rookie', a.roster.list.some(p => p.bot && p.name === 'Rookie Stick'));
+    await until(() => last.ph === 'fight');
+    seen = new Set();
+    await brawl([a], 60000);
+    await until(() => seen.has('stageClear') || seen.has('gameOver'), 6000);
+    check('a stage ends in STAGE CLEAR or GAME OVER', seen.has('stageClear') || seen.has('gameOver'));
     // ---------------- robustness
     a.ws.send('not json');
     for (let i = 0; i < 500; i++) a.ws.send(JSON.stringify({t: 'in', k: 999999}));
     await sleep(500);
     check('still running after junk and a flood', srv.exitCode === null && last !== null);
+    // the host leaves: the next one in becomes host, and everyone is told
+    seen = new Set();
+    a.ws.close();
+    check('the host leaving hands the room on', await until(() => seen.has('host') && b.roster.host === b.id, 3000));
     console.log(failures ? `\n${failures} failed` : '\nall passed');
-    for (const x of [a, b, c]) x.ws.close();
+    for (const x of [b, c]) x.ws.close();
     srv.kill();
     process.exit(failures ? 1 : 0);
 })();

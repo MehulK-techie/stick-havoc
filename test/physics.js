@@ -128,5 +128,78 @@ function run(w, frames, inputs) {
     run(w, 6, i => ({2: {k: i === 0 ? P.IN.HEAVY : 0}}));
     check('nobody loses health in the lobby', a.hp === 100);
 }
+{   // guard: a fifth of the damage, no launch; three in a row break it
+    const w = world('reactor'); const a = fighter(w, 1, 800), b = fighter(w, 2, 850); a.face = 1; b.face = -1;
+    const hold = {2: {k: P.IN.DOWN}};
+    run(w, 8, hold);                                  // (long enough that it isn't a parry)
+    const ev = [];
+    for (let i = 0; i < 3; i++) {
+        ev.push(...run(w, 1, {1: {k: P.IN.LIGHT}, 2: {k: P.IN.DOWN}}), ...run(w, 9, {1: {k: 0}, 2: {k: P.IN.DOWN}}));
+        a.x = b.x - 50; a.comboT = 0;
+    }
+    check('guarding takes a fifth of the damage', b.hp >= 97 && b.hp < 100 && ev.filter(e => e.type === 'block').length === 2);
+    check('three blocked hits break the guard', ev.some(e => e.type === 'guardbreak') && b.stun > 0);
+}
+{   // a guard raised just in time: a parry, and the attacker reels
+    const w = world('reactor'); const a = fighter(w, 1, 800), b = fighter(w, 2, 850); a.face = 1; b.face = -1;
+    run(w, 1, {1: {k: P.IN.LIGHT}});
+    const ev = run(w, 3, {1: {k: 0}, 2: {k: P.IN.DOWN}});
+    check('a just-in-time guard parries', ev.some(e => e.type === 'parry') && a.stun > 0 && b.hp === 100);
+}
+{   // a grab goes through a guard and throws them the other way
+    const w = world('reactor'); const a = fighter(w, 1, 800), b = fighter(w, 2, 850); a.face = 1; b.face = -1;
+    run(w, 8, {2: {k: P.IN.DOWN}});
+    const ev = run(w, 4, i => ({1: {k: i === 0 ? P.IN.GRAB : 0}, 2: {k: P.IN.DOWN}}));
+    check('a grab throws through a guard', ev.some(e => e.type === 'hit' && e.kind === 'throw') && b.vx < -500 && b.hp === 90);
+}
+{   // the uppercut reaches a standing opponent close up, every time
+    let ok = 0;
+    for (const gap of [20, 35, 50, 65]) {
+        const w = world('reactor'); const a = fighter(w, 1, 800), b = fighter(w, 2, 800 + gap); a.face = 1;
+        run(w, 10, i => ({1: {k: i === 0 ? P.IN.HEAVY : 0}}));
+        if (b.vy < -500)
+            ok++;
+    }
+    check('the uppercut launches at 20, 35, 50 and 65 units', ok === 4);
+}
+{   // a counter hit (caught mid-attack) and the combo counter
+    const w = world('reactor'); const a = fighter(w, 1, 800), b = fighter(w, 2, 850); a.face = 1; b.face = -1;
+    const ev = run(w, 4, i => ({1: {k: i === 1 ? P.IN.LIGHT : 0}, 2: {k: i === 0 ? P.IN.HEAVY : 0}}));
+    check('hitting someone mid-attack is a COUNTER', ev.some(e => e.type === 'callout' && e.text === 'COUNTER!'));
+    const w2 = world('reactor'); const c = fighter(w2, 1, 800), d = fighter(w2, 2, 848); c.face = 1;
+    const ev2 = [];
+    for (let i = 0; i < 12; i++) {
+        ev2.push(...run(w2, 1, {1: {k: i % 4 === 0 ? P.IN.LIGHT : 0}}));
+        c.x = d.x - 48;
+    }
+    check('the string counts as a combo', ev2.some(e => e.type === 'combo' && e.n >= 2 && e.dmg > 0));
+}
+{   // a crate parachutes down, lands, and walking over it picks the weapon up
+    const w = world('colosseum'); w.weapons = true; w.crateT = 0; const f = fighter(w, 1, 800);
+    const ev = run(w, 1, {});
+    check('a crate is dropped', ev.some(e => e.type === 'crate') && w.crates.length === 1);
+    const c = w.crates[0]; c.y = 700; c.x = 800;
+    const ev2 = run(w, 30, {});
+    check('it lands and walking over it picks it up', ev2.some(e => e.type === 'pickup') && f.weapon && !w.crates.length);
+}
+{   // each weapon: uses, damage, throws
+    const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 760); a.face = 1;
+    a.weapon = {kind: 'katana', uses: 5};
+    run(w, 6, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    check('the katana hits at range and uses a swing', b.hp < 100 && a.weapon.uses === 4);
+    a.atk = null; a.weapon = {kind: 'blaster', uses: 3}; b.x = 1100; b.hp = 100; b.stun = 0; b.st = 'idle';
+    run(w, 1, {1: {k: P.IN.LIGHT}});
+    check('the blaster fires a shot, with recoil', w.shots.length === 1 && a.vx < 0);
+    run(w, 10, {});
+    check('the laser hits across the arena', b.hp < 100 && !w.shots.length);
+    a.atk = null; a.weapon = {kind: 'grenade', uses: 1}; b.x = 1200;
+    run(w, 1, {1: {k: P.IN.LIGHT}});
+    const ev = run(w, 90, {});
+    check('the bouncy bomb bounces, then goes off', ev.filter(e => e.type === 'bounce').length >= 1 &&
+        ev.some(e => e.type === 'boom') && !a.weapon);
+    a.atk = null; a.weapon = {kind: 'bat', uses: 3}; b.x = 900; b.y = 820; b.ground = true; b.st = 'idle';
+    run(w, 1, {1: {k: P.IN.USE}});
+    check('E throws the weapon you hold', !a.weapon && w.shots.some(s => s.kind === 'thrown'));
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

@@ -31,7 +31,7 @@ const Lobby = (() => {
         ctx.fillStyle = 'rgba(148, 163, 184, 0.05)';
         ctx.fillRect(0, 700, W, 100);                   // a wainscot along the floor
         // ceiling lights: soft cones
-        for (const x of [260, 800, 1340]) {
+        for (const x of [260, 1340]) {             // (the middle of the wall is the stadium screen)
             const g = ctx.createLinearGradient(0, 40, 0, 520);
             g.addColorStop(0, 'rgba(226, 232, 240, 0.10)');
             g.addColorStop(1, 'rgba(226, 232, 240, 0)');
@@ -84,39 +84,47 @@ const Lobby = (() => {
         label(ctx, 'WARDROBE', x, y - 226);
     }
 
-    // the host's console: a desk and a wall screen with the room's state and the join code
+    // the host's console: a desk below, and the stadium screen high on the wall
+    // with the room's settings and the join code
     function console_(ctx, t) {
         const {x, y} = ST.console;
-        const sel = state.sel || {mode: 'koth', map: 'rooftops'};
-        // the screen
-        const sw = 520, sh = 250, sx = x - sw / 2, sy = 180;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+        const sel = state.sel || {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: 10};
+        const sw = 640, sh = 250, sx = x - sw / 2, sy = 50;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
         rounded(ctx, sx, sy, sw, sh, 14);
         ctx.fill();
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
         ctx.lineWidth = 2;
         ctx.stroke();
+        ctx.fillStyle = 'rgba(34, 211, 238, 0.7)';           // a thin lit edge along the top
+        ctx.fillRect(sx + 20, sy, sw - 40, 2);
         ctx.textAlign = 'left';
         ctx.fillStyle = '#e5e7eb';
-        ctx.font = '800 30px system-ui, sans-serif';
-        ctx.fillText('STICK HAVOC', sx + 28, sy + 52);
-        ctx.font = '600 13px system-ui, sans-serif';
+        ctx.font = '800 28px system-ui, sans-serif';
+        ctx.fillText('STICK HAVOC', sx + 26, sy + 46);
+        ctx.font = '700 11px system-ui, sans-serif';
         ctx.fillStyle = '#94a3b8';
-        ctx.fillText('TOURNAMENT EDITION', sx + 30, sy + 74);
-        const row = (k, v, yy, accent) => {
-            ctx.font = '700 11px system-ui, sans-serif';
+        ctx.fillText(`CREATED BY MEHUL  ·  ${state.version || 'v1.2.0-tournament'}  ·  MIT`, sx + 27, sy + 66);
+        const modes = Object.assign({}, MODES, {random: 'Random'});
+        const rows = [
+            ['MODE', modes[sel.mode], '#22d3ee'],
+            ['MATCH', `First to ${sel.target}  ·  ${sel.timer ? sel.timer + ' s rounds' : 'no timer'}`],
+            ['MAP', sel.map === 'random' ? 'Random' : MAPS[sel.map].name],
+            ['WEAPONS', sel.weapons ? 'On' : 'Off'],
+            ['PLAYERS READY', `${state.ready || 0} / ${sel.limit || state.max || 10}`],
+        ];
+        rows.forEach(([k, v, accent], i) => {
+            const col = i < 3 ? 0 : 1, row = i < 3 ? i : i - 3;
+            const rx = sx + 26 + col * 220, ry = sy + 100 + row * 46;
+            ctx.font = '700 10px system-ui, sans-serif';
             ctx.fillStyle = '#64748b';
-            ctx.fillText(k, sx + 30, yy);
-            ctx.font = '700 19px system-ui, sans-serif';
+            ctx.fillText(k, rx, ry);
+            ctx.font = '700 16px system-ui, sans-serif';
             ctx.fillStyle = accent || '#e5e7eb';
-            ctx.fillText(v, sx + 30, yy + 22);
-        };
-        row('MODE', MODES[sel.mode], sy + 112, '#22d3ee');
-        row('MAP', MAPS[sel.map].name, sy + 162);
-        row('PLAYERS READY', `${state.ready || 0} / ${state.max || 10}`, sy + 212);
-        // the QR code, for joining
+            ctx.fillText(v, rx, ry + 19);
+        });
         if (qr) {
-            const n = qr.length, cell = Math.floor(150 / n), size = cell * n, qx = sx + sw - size - 34, qy = sy + 30;
+            const n = qr.length, cell = Math.floor(150 / n), size = cell * n, qx = sx + sw - size - 32, qy = sy + 30;
             ctx.fillStyle = '#f8fafc';
             rounded(ctx, qx - 8, qy - 8, size + 16, size + 16, 8);
             ctx.fill();
@@ -177,7 +185,7 @@ const Lobby = (() => {
             const s = ST[state.near];
             const isHost = myId === hostId;
             const text = state.near === 'wardrobe' ? 'E  Customize' :
-                isHost ? 'Q  Mode    Tab  Map    E  Start' : 'Only the host (👑) can start';
+                isHost ? 'E  Match settings     P  1P Arcade' : 'E  View rules  ·  Waiting for Host to start...';
             ctx.font = '700 15px system-ui, sans-serif';
             const w = ctx.measureText(text).width + 28;
             const y = s.y - (state.near === 'console' ? 120 : 250);
@@ -191,6 +199,10 @@ const Lobby = (() => {
             ctx.fillStyle = '#e5e7eb';
             ctx.fillText(text, s.x, y);
         }
+    }
+
+    // the floating words (the dummy's damage, PARRY!, COUNTER!, ...), in any scene
+    function drawPops(ctx, dt) {
         for (const p of pops) {
             p.t += dt;
             const k = p.t / 1.1;
@@ -203,7 +215,7 @@ const Lobby = (() => {
             ctx.lineWidth = 5;
             ctx.strokeStyle = 'rgba(11, 15, 23, 0.9)';
             ctx.strokeText(p.text, 0, 0);
-            ctx.fillStyle = p.big ? '#facc15' : '#f1f5f9';
+            ctx.fillStyle = p.color || (p.big ? '#facc15' : '#f1f5f9');
             ctx.fillText(p.text, 0, 0);
             ctx.restore();
         }
@@ -215,9 +227,9 @@ const Lobby = (() => {
 
     function pop(ev) {
         pops.push({text: ev.text, big: ev.big, x: ev.x, y: ev.y, t: 0, dx: (Math.random() - 0.5) * 80,
-            rot: (Math.random() - 0.5) * 0.3});
+            rot: (Math.random() - 0.5) * 0.3, color: ev.color});
     }
 
-    const state = {near: null, sel: null, ready: 0, max: 10, starting: null};
-    return {back, front, pop, state};
+    const state = {near: null, sel: null, ready: 0, max: 10, starting: null, version: null};
+    return {back, front, pop, drawPops, state};
 })();

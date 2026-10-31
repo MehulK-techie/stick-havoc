@@ -3,12 +3,12 @@
 // the browser uses the maps, the constants and drawRig().
 // Works as a CommonJS module (Node) and as window.Physics (browser).
 (function (root, factory) {
-    const api = factory();
+    const api = factory(typeof module === 'object' && module.exports ? require('./weapons.js') : root.Weapons);
     if (typeof module === 'object' && module.exports)
         module.exports = api;
     else
         root.Physics = api;
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : this, function (Weapons) {
     'use strict';
 
     const W = 1600, H = 900;              // every map, in world units (y grows downwards)
@@ -30,7 +30,8 @@
     const HAZARDS = {ice: 'Slippery Ice', anvil: 'Anvil Rain', lowgrav: 'Low Gravity', gloves: 'Giant Boxing Gloves'};
     const VOTE_PAIRS = [['ice', 'anvil'], ['lowgrav', 'gloves'], ['ice', 'gloves'], ['anvil', 'lowgrav']];
     const MODES = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag'};
-    const IN = {LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, LIGHT: 32, HEAVY: 64, DASH: 128, USE: 256};
+    const IN = {LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, LIGHT: 32, HEAVY: 64, DASH: 128, USE: 256, GRAB: 512};
+    const PROJECTILES = ['laser', 'grenade', 'thrown'];
 
     // ---------------------------------------------------------------- maps
     // plats: {x, y, w, h} tops you land on; oneWay: jump up through it;
@@ -88,6 +89,7 @@
         const m = MAPS[map] || MAPS.lobby;
         return {map, plats: stage(map), fighters: [], anvils: [], time: 0, timeScale: 1, slowmo: 0, slowmoCd: 0,
             hitstop: 0, hazard: null, hazardT: 0, anvilT: 0, events: [], noDamage: false,
+            weapons: false, crates: [], shots: [], crateT: 8,
             gravity: m.gravity || 1, pit: !!m.pit,
             beam: m.beam ? {next: m.beam.every, phase: 'idle', x: -100, dir: 1, beeps: 0, hit: []} : null};
     }
@@ -96,7 +98,8 @@
         return {id, name, color, gear: gear || {}, x, y, vx: 0, vy: 0, face: x < W / 2 ? 1 : -1, hp: C.HP,
             ground: false, jumps: 2, st: 'air', atk: null, combo: 0, comboT: 0, stun: 0, inv: 0,
             shield: C.SPAWN_SHIELD, dashT: 0, dashCd: 0, airDash: true, ledge: null, ledgeT: 0, ledgeCd: 0, juggle: 0,
-            spin: 0, spinV: 0, drop: 0, wallCd: 0, koT: 0, lastHit: null, prev: 0};
+            spin: 0, spinV: 0, drop: 0, wallCd: 0, koT: 0, lastHit: null, prev: 0,
+            blocking: false, blockT: 0, guardHits: 0, guardT: 0, weapon: null, comboN: 0, comboDmg: 0, comboBy: null};
     }
 
     // the lobby's punching dummy: springs back to where it stands, never falls over for good
@@ -112,7 +115,8 @@
         jab: {dur: fr(12), from: fr(4), to: fr(8), reach: 48, r: 32, dmg: 4},
         hook: {dur: fr(15), from: fr(5), to: fr(9), reach: 50, r: 34, dmg: 5},
         straight: {dur: fr(21), from: fr(6), to: fr(11), reach: 58, r: 38, dmg: 9},
-        uppercut: {dur: fr(24), from: fr(7), to: fr(14), reach: 46, r: 42, dmg: 12},
+        uppercut: {dur: fr(24), from: fr(7), to: fr(14), reach: 46, r: 50, dmg: 12},
+        grab: {dur: fr(24), from: fr(3), to: fr(7), reach: 0, r: 0, dmg: 10},
         airkick: {dur: fr(25), from: fr(3), to: fr(21), reach: 0, r: 40, dmg: 11},
         dive: {dur: fr(30), from: fr(2), to: fr(27), reach: 0, r: 40, dmg: 10},
     };
@@ -135,10 +139,47 @@
         return (cx - nx) ** 2 + (cy - ny) ** 2 <= r * r;
     }
 
+    function callout(w, f, text) {
+        w.events.push({type: 'callout', x: Math.round(f.x), y: Math.round(f.y - 130), text});
+    }
+
+    function baseDamage(kind) {
+        const m = MOVES[kind] || Weapons.KINDS[kind] || Weapons.SHOTS[kind];
+        return m ? m.dmg : 8;
+    }
+
+    // a: the attacker (for a projectile, a stand-in at the projectile); t: who's hit
     function applyHit(w, a, t, kind) {
         const gloves = w.hazard === 'gloves' ? 1.35 : 1;
         const airborne = !t.ground;
+        const ranged = PROJECTILES.includes(kind);
+        // guarding, facing the blow: a fresh guard parries, a held one takes a fifth
+        if (t.blocking && t.face === (a.x > t.x ? 1 : -1)) {
+            if (t.blockT < 0.15 && !ranged && a.atk !== undefined) {
+                a.stun = 0.45; a.st = 'hurt'; a.atk = null; a.vx = -a.face * 220;
+                w.hitstop = Math.max(w.hitstop, 0.06);
+                callout(w, t, 'PARRY!');
+                w.events.push({type: 'parry', x: Math.round(t.x), y: Math.round(t.y - 60), by: t.id});
+                return;
+            }
+            const chip = Math.round(baseDamage(kind) * 0.2);
+            if (!w.noDamage && !t.dummy)
+                t.hp = Math.max(1, t.hp - chip);
+            t.guardHits++;
+            t.guardT = 1.2;
+            if (t.guardHits >= 3) {                    // three in a row: the guard breaks
+                t.blocking = false; t.guardHits = 0; t.st = 'hurt'; t.stun = 0.9; t.vx = a.face * 260;
+                w.hitstop = Math.max(w.hitstop, 0.07);
+                callout(w, t, 'GUARD BREAK!');
+                w.events.push({type: 'guardbreak', x: Math.round(t.x), y: Math.round(t.y - 60)});
+            } else {
+                t.vx = a.face * 180;                   // pushed back, nothing more
+                w.events.push({type: 'block', x: Math.round(t.x + (a.x > t.x ? 18 : -18)), y: Math.round(t.y - 60)});
+            }
+            return;
+        }
         const m = MOVES[kind];
+        const wk = Weapons.KINDS[kind] || Weapons.SHOTS[kind];
         let kx, ky, stun, tumble = false;
         switch (kind) {
         case 'jab':                                    // quick, a small stagger
@@ -170,6 +211,8 @@
             }
             stun = 0.55;
             break;
+        default:                                       // a weapon, or a projectile
+            kx = a.face * wk.kx; ky = wk.ky; stun = wk.stun; tumble = !!wk.tumble;
         }
         // a juggle: light hits keep an airborne, launched opponent up there
         if (airborne && t.juggle > 0 && STRING.includes(kind)) {
@@ -180,7 +223,22 @@
                 kx = a.face * 760; ky = -320; tumble = true; t.juggle = 0;
             }
         }
-        let dmg = Math.round(m.dmg * (gloves > 1 ? 1.25 : 1));
+        let dmg = Math.round(baseDamage(kind) * (gloves > 1 ? 1.25 : 1));
+        // a counter hit: caught in the middle of their own attack
+        if (t.atk && t.atk.t < t.atk.move.to && !ranged) {
+            dmg = Math.round(dmg * 1.25);
+            callout(w, t, 'COUNTER!');
+        } else if (kind === 'uppercut' && !airborne) {
+            callout(w, t, 'UPPERCUT!');
+        }
+        // the combo: more hits while they're still reeling from the last
+        const chained = t.comboBy === a.id && w.time - (t.comboAt || -9) < 0.5;
+        t.comboAt = w.time;
+        t.comboN = chained ? t.comboN + 1 : 1;
+        t.comboDmg = (chained ? t.comboDmg : 0) + dmg;
+        t.comboBy = a.id;
+        if (t.comboN >= 2)
+            w.events.push({type: 'combo', by: a.id, on: t.id, n: t.comboN, dmg: t.comboDmg, crit: t.comboN >= 4});
         t.vx = kx * gloves;
         t.vy = ky * gloves;
         if (t.vy < 0)
@@ -189,11 +247,12 @@
         t.atk = null;
         t.ledge = null;
         t.dashT = 0;
+        t.blocking = false;
         t.lastHit = a.id;
         t.st = tumble ? 'tumble' : 'hurt';
         if (tumble)
             t.spinV = (a.face > 0 ? 1 : -1) * 13;
-        const heavy = !['jab', 'hook'].includes(kind);
+        const heavy = !['jab', 'hook', 'katana', 'laser'].includes(kind);
         w.hitstop = Math.max(w.hitstop, heavy ? 0.06 : 0.03);
         const hx = (a.x + t.x) / 2, hy = t.y - 60;
         const len = Math.hypot(kx, ky) || 1;
@@ -209,6 +268,25 @@
         if (shown <= 0)
             return;
         t.hp = Math.max(0, t.hp - shown);
+        if (t.hp <= 0) {
+            if (a.hp > 0 && a.hp < C.HP * 0.25)
+                callout(w, a, 'CLUTCH REVERSAL!');
+            knockOut(w, t, a);
+        }
+    }
+
+    // a grab: they're swung round and thrown the other way (guarding doesn't help)
+    function applyThrow(w, a, t) {
+        t.x = a.x - a.face * 30;
+        t.vx = -a.face * 950; t.vy = -540; t.ground = false; t.st = 'tumble'; t.spinV = -a.face * 12;
+        t.stun = 0.7; t.atk = null; t.blocking = false; t.ledge = null; t.lastHit = a.id;
+        w.hitstop = Math.max(w.hitstop, 0.06);
+        callout(w, t, 'THROW!');
+        w.events.push({type: 'hit', x: Math.round(t.x), y: Math.round(t.y - 60), kind: 'throw', power: 10, heavy: true,
+            color: a.color, by: a.id, on: t.id, dx: -a.face, dy: -0.5});
+        if (t.dummy || w.noDamage)
+            return;
+        t.hp = Math.max(0, t.hp - MOVES.grab.dmg);
         if (t.hp <= 0)
             knockOut(w, t, a);
     }
@@ -280,13 +358,17 @@
         platforms(w, live, dt);
         beam(w, live, dt);
         anvils(w, live, dt);
+        crates(w, live, dt);
+        shots(w, live, dt);
     }
 
     function control(w, f, inp, dt) {
         const k = inp.k | 0, pressed = k & ~f.prev;
         f.prev = k;
-        for (const key of ['stun', 'inv', 'shield', 'dashCd', 'comboT', 'drop', 'wallCd', 'ledgeCd'])
+        for (const key of ['stun', 'inv', 'shield', 'dashCd', 'comboT', 'drop', 'wallCd', 'ledgeCd', 'guardT'])
             f[key] = Math.max(0, f[key] - dt);
+        if (f.guardT <= 0)
+            f.guardHits = 0;
         if (f.st === 'ko') {
             f.koT += dt;
             return;
@@ -313,11 +395,24 @@
         const dir = ((k & IN.RIGHT) ? 1 : 0) - ((k & IN.LEFT) ? 1 : 0);
         if (f.st === 'hurt' && f.stun <= 0)
             f.st = f.ground ? 'idle' : 'air';
-        if (!free)
+        if (!free) {
+            f.blocking = false;
             return;
+        }
+        // guard: hold down on the ground (down + jump still drops through a ledge)
+        const guard = f.ground && (k & IN.DOWN) && !(k & IN.JUMP) && !f.atk && f.dashT <= 0 &&
+            !(pressed & (IN.LIGHT | IN.HEAVY | IN.GRAB | IN.DASH));
+        if (guard) {
+            f.blockT = f.blocking ? f.blockT + dt : 0;
+            f.blocking = true;
+        } else {
+            f.blocking = false;
+        }
         const aerial = f.atk && (f.atk.kind === 'airkick' || f.atk.kind === 'dive');
         // run
-        if (f.dashT <= 0 && !aerial) {
+        if (f.blocking) {
+            f.vx *= Math.pow(0.0001, dt);
+        } else if (f.dashT <= 0 && !aerial) {
             const busy = f.atk ? 0.3 : 1;
             const target = dir * C.RUN * busy;
             const acc = f.ground ? (w.hazard === 'ice' ? C.ACC_ICE : C.ACC_GROUND) : C.ACC_AIR;
@@ -356,6 +451,15 @@
             f.atk = null;
             w.events.push({type: 'dash', id: f.id, x: Math.round(f.x), y: Math.round(f.y), cancel: !!cancellable});
         }
+        // E: pick up a crate's weapon, or throw the one you hold
+        if (pressed & IN.USE)
+            useItem(w, f, true);
+        // G: a grab, on the ground
+        if ((pressed & IN.GRAB) && !f.atk && f.dashT <= 0 && f.ground) {
+            f.atk = {kind: 'grab', move: MOVES.grab, t: 0, hit: [], dir: {x: f.face, y: 0}};
+            w.events.push({type: 'swing', id: f.id, kind: 'grab'});
+            return;
+        }
         if (f.atk || f.dashT > 0 || !(pressed & (IN.LIGHT | IN.HEAVY)))
             return;
         // attacks: an un-aimed one turns you to the nearest foe close by (as in Tekken)
@@ -368,6 +472,10 @@
             }
             if (near && Math.abs(near.x - f.x) > 4)
                 f.face = near.x > f.x ? 1 : -1;
+        }
+        if ((pressed & IN.LIGHT) && f.weapon) {           // a weapon in hand: J uses it
+            weaponAttack(w, f);
+            return;
         }
         let kind;
         if ((pressed & IN.HEAVY) && !f.ground)
@@ -390,17 +498,70 @@
         w.events.push({type: 'swing', id: f.id, kind});
     }
 
+    // a weapon swing, or a shot
+    function weaponAttack(w, f) {
+        const kind = f.weapon.kind, K = Weapons.KINDS[kind];
+        if (K.melee) {
+            f.atk = {kind, move: K, t: 0, hit: [], dir: {x: f.face, y: 0}};
+        } else {
+            f.atk = {kind, move: {dur: K.dur, from: 99, to: -1}, t: 0, hit: [], dir: {x: f.face, y: 0}};
+            shoot(w, f, K.shot);
+            f.vx -= f.face * (K.recoil || 0);
+        }
+        w.events.push({type: 'swing', id: f.id, kind});
+        if (--f.weapon.uses <= 0) {
+            f.weapon = null;
+            w.events.push({type: 'broke', id: f.id, kind});
+        }
+    }
+
+    function shoot(w, f, kind) {
+        const S = Weapons.SHOTS[kind];
+        w.shots.push({kind, owner: f.id, x: f.x + f.face * 30, y: f.y - 58, vx: f.face * S.speed, vy: S.lift || 0,
+            bounces: 0, life: S.life, color: f.color});
+    }
+
+    // E: pick up the nearest landed crate's weapon; with one in hand, throw it
+    function useItem(w, f, pressedUse) {
+        if (f.weapon && pressedUse) {
+            shoot(w, f, f.weapon.kind === 'grenade' ? 'grenade' : 'thrown');
+            w.events.push({type: 'swing', id: f.id, kind: 'throw'});
+            f.weapon = null;
+            return;
+        }
+        if (f.weapon)
+            return;
+        const crate = w.crates.find(c => c.landed && Math.abs(c.x - f.x) < (pressedUse ? 70 : 34) &&
+            Math.abs(c.y - f.y) < 50);
+        if (!crate)
+            return;
+        w.crates = w.crates.filter(c => c !== crate);
+        f.weapon = {kind: crate.kind, uses: Weapons.KINDS[crate.kind].uses};
+        w.events.push({type: 'pickup', id: f.id, kind: crate.kind, x: Math.round(crate.x), y: Math.round(crate.y)});
+    }
+
     function attacks(w, f, live, dt) {
         const a = f.atk;
         if (!a || f.st === 'ko')
             return;
         a.t += dt;
         const m = a.move;
-        if (a.t >= m.from && a.t <= m.to) {
+        if (a.kind === 'grab' && a.t >= m.from && a.t <= m.to && !a.hit.length) {
+            const t = live.find(o => o !== f && o.st !== 'ko' && o.ground && o.inv <= 0 && o.shield <= 0 &&
+                Math.abs(o.x - f.x) < 62 && Math.abs(o.y - f.y) < 40 && (o.x - f.x) * f.face > -10);
+            if (t) {
+                a.hit.push(t.id);
+                applyThrow(w, f, t);
+            }
+        } else if (a.kind !== 'grab' && a.t >= m.from && a.t <= m.to) {
             const big = w.hazard === 'gloves' ? 1.6 : 1;
             let cx, cy;
             if (a.kind === 'airkick') {
                 cx = f.x + f.face * 34; cy = f.y - 40;
+            } else if (a.kind === 'uppercut') {          // low and forward: it catches a standing opponent
+                cx = f.x + f.face * 34; cy = f.y - 52;
+            } else if (Weapons.KINDS[a.kind]) {
+                cx = f.x + f.face * m.reach; cy = f.y - 58;
             } else if (a.kind === 'dive') {
                 cx = f.x + f.face * 26; cy = f.y - 8;
             } else {
@@ -562,7 +723,7 @@
             });
         }
         if (f.st !== 'ko' && f.st !== 'tumble' && f.st !== 'hurt' && !f.ledge)
-            f.st = !f.ground ? 'air' : f.dashT > 0 ? 'dash' : Math.abs(f.vx) > 40 ? 'run' : 'idle';
+            f.st = !f.ground ? 'air' : f.dashT > 0 ? 'dash' : f.blocking ? 'block' : Math.abs(f.vx) > 40 ? 'run' : 'idle';
         // the pit: out (or, where there is none, back from the top)
         if (f.y > H + 220 && f.st !== 'gone') {
             if (f.dummy || !w.pit) {
@@ -656,6 +817,97 @@
         }
     }
 
+    // supply crates: one parachutes onto a platform every 14-20 s (when weapons are on)
+    function crates(w, live, dt) {
+        if (w.weapons) {
+            w.crateT -= dt;
+            if (w.crateT <= 0 && w.crates.length < 3) {
+                w.crateT = 14 + Math.random() * 6;
+                const tops = w.plats.filter(p => p.alive && p.w > 120);
+                const p = tops[Math.floor(Math.random() * tops.length)];
+                if (p) {
+                    const kind = Weapons.NAMES[Math.floor(Math.random() * Weapons.NAMES.length)];
+                    const x = p.x + 40 + Math.random() * (p.w - 80);
+                    w.crates.push({x, y: -60, kind, landed: false, life: 22});
+                    w.events.push({type: 'crate', x: Math.round(x)});
+                }
+            }
+        }
+        for (const c of w.crates) {
+            const below = w.plats.find(p => p.alive && c.x >= p.x && c.x <= p.x + p.w && p.y >= c.y - 2);
+            if (!c.landed || !below || below.y > c.y + 2) {
+                c.landed = false;
+                const ny = c.y + 150 * dt;              // slow, under its parachute
+                if (below && ny >= below.y) {
+                    c.y = below.y; c.landed = true;
+                    w.events.push({type: 'land', x: Math.round(c.x), y: Math.round(c.y)});
+                } else {
+                    c.y = ny;
+                }
+            }
+            c.life -= dt;
+        }
+        w.crates = w.crates.filter(c => c.life > 0 && c.y < H + 100);
+        for (const f of live) {                       // walking over a crate picks it up
+            if (!f.weapon && !f.dummy && f.st !== 'ko')
+                useItem(w, f, false);
+        }
+    }
+
+    function shots(w, live, dt) {
+        for (const s of w.shots) {
+            const S = Weapons.SHOTS[s.kind];
+            s.vy += (S.gravity || 0) * dt;
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            s.life -= dt;
+            const owner = w.fighters.find(f => f.id === s.owner);
+            // whoever it touches (not its thrower)
+            const hit = live.find(f => f.id !== s.owner && f.st !== 'ko' && f.inv <= 0 && f.shield <= 0 &&
+                circleHits(s.x, s.y, s.kind === 'grenade' ? 12 : 16, hurt(f)));
+            if (s.kind === 'grenade') {
+                if (s.x < 20 || s.x > W - 20)
+                    s.vx = -s.vx * 0.6;
+                const p = s.vy > 0 && w.plats.find(q => q.alive && s.x >= q.x && s.x <= q.x + q.w &&
+                    s.y >= q.y && s.y - s.vy * dt <= q.y + 2);
+                if (p) {
+                    s.y = p.y; s.vy = -Math.abs(s.vy) * 0.55; s.vx *= 0.8; s.bounces++;
+                    w.events.push({type: 'bounce', x: Math.round(s.x), y: Math.round(s.y)});
+                }
+                if (hit || s.bounces > S.bounces || s.life <= 0) {
+                    s.dead = true;
+                    grenadeBoom(w, s, owner);
+                }
+                continue;
+            }
+            if (hit) {
+                s.dead = true;
+                const a = {id: s.owner, x: s.x - Math.sign(s.vx) * 40, y: s.y, face: Math.sign(s.vx) || 1,
+                    color: s.color, hp: owner ? owner.hp : 0, stun: 0, vx: 0};
+                applyHit(w, a, hit, s.kind);
+            }
+            if (s.x < 0 || s.x > W || s.y > H + 100 || s.life <= 0 ||
+                w.plats.some(p => p.alive && p.solid && s.x > p.x && s.x < p.x + p.w && s.y > p.y && s.y < p.y + p.h))
+                s.dead = true;
+        }
+        w.shots = w.shots.filter(s => !s.dead);
+    }
+
+    function grenadeBoom(w, s, owner) {
+        const S = Weapons.SHOTS.grenade;
+        for (const f of w.fighters) {
+            if (f.st === 'ko' || f.st === 'gone' || f.inv > 0 || f.shield > 0 || f.dummy)
+                continue;
+            if (Math.hypot(f.x - s.x, f.y - 50 - s.y) < S.radius && !w.noDamage) {
+                f.hp = Math.max(0, f.hp - S.dmg);
+                f.lastHit = s.owner;
+                if (f.hp <= 0)
+                    knockOut(w, f, owner || null);
+            }
+        }
+        explode(w, s.x, s.y, S.radius, S.power, null);
+    }
+
     function anvils(w, live, dt) {
         if (w.hazard === 'anvil') {
             w.anvilT -= dt;
@@ -721,6 +973,10 @@
         case 'hurt':
             body = -0.45; lArm = -2.2; rArm = 2.2; lFore = -0.8; rFore = 0.8; lThigh = 0.3; rThigh = -0.3;
             break;
+        case 'block':                              // crouched, both forearms up in front of the face
+            body = -0.05; rArm = 2.3; rFore = -1.5; lArm = 2.0; lFore = -1.3;
+            lThigh = 0.6; lShin = -0.9; rThigh = -0.2; rShin = 0.7;
+            break;
         }
         switch (f.ak) {
         case 'jab':                                // the lead hand, straight out and back
@@ -743,6 +999,18 @@
             break;
         case 'dive':                               // a diving kick, 45 degrees down
             body = 0.5; lThigh = 0.9; rThigh = 0.2; lShin = 0; rShin = -1.3; lArm = -2.4; rArm = -2.0;
+            break;
+        case 'grab':                               // both hands out to grab
+            rArm = 1.5; lArm = 1.3; rFore = -0.1 * (1 - out); lFore = -0.2; body += 0.2 * out;
+            break;
+        case 'katana': case 'bat':                 // overhead, then down and through
+            rArm = 2.8 - 2.4 * Math.min(1, p * 1.4); rFore = -0.2; lArm = 0.6; lFore = -1.4; body += 0.2 * out;
+            break;
+        case 'blaster':
+            rArm = 1.57; rFore = 0; lArm = 1.3; lFore = -0.4;
+            break;
+        case 'throw': case 'grenade':
+            rArm = 2.8 - 1.6 * p; rFore = -0.3; lArm = 1.0; lFore = -1.0;
             break;
         }
         if (f.st === 'tumble' || f.st === 'ko') {
@@ -781,6 +1049,16 @@
         const fist = limb(shoulder, rArm + body, rFore, 18, 18);
         ctx.beginPath(); ctx.arc(head.x, head.y, 11, 0, Math.PI * 2); ctx.stroke();
         ctx.shadowBlur = 0;
+        if (f.weapon && Weapons)                       // the weapon, along the forearm
+            Weapons.draw(ctx, f.weapon, fist, Math.PI / 2 - (rArm + body + rFore));
+        if (opts.eyes) {                               // Shadow Mehul's red eyes
+            ctx.fillStyle = '#f43f5e';
+            ctx.shadowColor = '#f43f5e';
+            ctx.shadowBlur = 10;
+            ctx.fillRect(head.x + 2, head.y - 3, 4, 2.5);
+            ctx.fillRect(head.x + 7, head.y - 3, 3, 2.5);
+            ctx.shadowBlur = 0;
+        }
         drawHat(ctx, f.gear && f.gear.hat, head, body, f.color, t);
         if (opts.gloves) {                            // Giant Boxing Gloves
             ctx.fillStyle = '#ef4444';

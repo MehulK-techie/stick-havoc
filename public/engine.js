@@ -8,7 +8,7 @@
     const cv = $('game'), ctx = cv.getContext('2d');
 
     // ------------------------------------------------------------ state
-    let ws = null, myId = null, hostId = null;
+    let ws = null, myId = null, hostId = null, choices = null, scene = 'lobby';
     let roster = new Map();             // id -> {name, color, gear, wins, bot}
     let snaps = [];                     // [{at, s}] newest last
     let map = 'lobby', plats = stage('lobby');
@@ -36,6 +36,9 @@
             } else if (m.type === 'welcome') {
                 myId = m.id;
                 Hud.setOptions({colors: m.colors, hats: m.hats, trails: m.trails});
+                choices = m.choices;
+                Lobby.state.version = 'v' + m.version;
+                $('ver').textContent = 'v' + m.version;
                 restoreLook();
             } else if (m.type === 'near') {
                 Lobby.state.near = m.station;
@@ -84,7 +87,9 @@
         });
         Object.assign(Lobby.state, {sel: s.sel, ready: s.ready, max: s.max, starting: s.starting});
         Hud.setScene(s.scene);
+        scene = s.scene;
         if (s.scene === 'lobby') {
+            Hud.syncSettings(s.sel, myId === hostId);
             const n = s.starting === null ? null : Math.ceil(s.starting);
             if (n !== lastStart && n !== null && n > 0)
                 Sfx.play('siren');
@@ -136,18 +141,86 @@
             cam.shake = Math.max(cam.shake, ev.heavy ? 10 : 3);
             if (ev.on === 0)
                 flashes.set(0, performance.now());
+            if (ev.on === myId)
+                Touch.buzz(ev.heavy ? 40 : 15);
             Sfx.play(ev.kind === 'jab' || ev.kind === 'hook' ? 'light' : ev.kind === 'straight' ? 'straight' :
-                ev.kind === 'beam' ? 'beam' : 'heavy');
+                ev.kind === 'beam' ? 'beam' : ev.kind === 'katana' ? 'slash' : ev.kind === 'laser' ? 'zap' : 'heavy');
             break;
         }
         case 'pop':
             Lobby.pop(ev);
+            break;
+        case 'callout':                          // PARRY!, COUNTER!, GUARD BREAK!, UPPERCUT!, THROW!, ...
+            Lobby.pop({text: ev.text, x: ev.x, y: ev.y, big: true,
+                color: /REVERSAL|BREAK/.test(ev.text) ? '#f43f5e' : /PARRY/.test(ev.text) ? '#22d3ee' : '#facc15'});
+            if (/CLUTCH/.test(ev.text))
+                banner('CLUTCH REVERSAL!', '#f43f5e', 1.4, 64);
+            break;
+        case 'combo':
+            if (ev.by === myId || !fighterNow(myId))
+                Hud.combo(ev.n, ev.dmg, ev.crit, colorOf(ev.by));
+            if (ev.n === 3) {
+                const f = fighterNow(ev.on);
+                if (f)
+                    Lobby.pop({text: '3x COMBO!', x: f[1], y: f[2] - 160, big: true, color: '#facc15'});
+            }
+            break;
+        case 'block':
+            burst(ev.x, ev.y, '#93c5fd', 6, 260);
+            Sfx.play('block');
+            break;
+        case 'parry':
+            ring(ev.x, ev.y, '#22d3ee');
+            Sfx.play('parry');
+            break;
+        case 'guardbreak':
+            burst(ev.x, ev.y, '#f43f5e', 16, 600);
+            cam.shake = Math.max(cam.shake, 12);
+            Sfx.play('guardbreak');
+            break;
+        case 'crate':
+            Sfx.play('crate');
+            break;
+        case 'pickup':
+            if (ev.id === myId) {
+                Hud.toast(`${Weapons.KINDS[ev.kind].name}: J to use it, E to throw it`);
+                Touch.buzz(20);
+            }
+            Sfx.play('pickup');
+            break;
+        case 'broke':
+            if (ev.id === myId)
+                Hud.toast(`Your ${Weapons.KINDS[ev.kind].name} is used up`);
+            break;
+        case 'bounce':
+            Sfx.play('bounce');
+            break;
+        case 'host':
+            Hud.toast(`👑 ${nameOf(ev.id)} is now Room Host`, 3500);
+            break;
+        case 'timeup':
+            banner('TIME', '#e5e7eb', 1.2, 110);
+            break;
+        case 'stageClear':
+            banner('STAGE CLEAR!', '#22d3ee', 2.4, 90);
+            setTimeout(() => banner(`Time: ${ev.time}s  ·  next: ${ev.next}`, '#e5e7eb', 1.8, 34), 1200);
+            Sfx.play('fight');
+            break;
+        case 'gameOver':
+            banner('GAME OVER', '#f43f5e', 3, 100);
+            setTimeout(() => banner(`Stage ${ev.stage} · beaten by ${ev.by}`, '#e5e7eb', 2, 32), 1400);
+            break;
+        case 'arcadeWin':
+            banner('ARCADE CLEAR', '#facc15', 3.5, 96);
+            setTimeout(() => banner(`Shadow Mehul is beaten · ${ev.time}s`, '#e5e7eb', 2.2, 32), 1400);
             break;
         case 'ko':
             ring(ev.x, ev.y, ev.color || '#f1f5f9');
             burst(ev.x, ev.y, ev.color || '#f1f5f9', 50, 1300);
             cam.shake = 28; cam.flash = 1; cam.slow = 0;
             banner('K.O.', '#f43f5e', 1.3, 150);
+            if (ev.id === myId)
+                Touch.buzz(90);
             Sfx.play('ko');
             break;
         case 'slowmo':
@@ -195,7 +268,7 @@
             Sfx.play('ledge');
             break;
         case 'swing':
-            Sfx.play('swing');
+            Sfx.play(ev.kind === 'blaster' ? 'laser' : ev.kind === 'grab' ? 'grab' : 'swing');
             break;
         case 'crumble':
             dust(ev.x, ev.y, 30, '#fb923c');
@@ -320,10 +393,10 @@
             out.push({id: fb[0], x: lerp(1), y: lerp(2), vx: fb[3], vy: fb[4], face: fb[5], hp: fb[6], st: fb[7],
                 ak: fb[8] || null, ap: fb[9], combo: fb[10], inv: fb[11], shield: fb[12],
                 spin: fa[13] + (fb[13] - fa[13]) * k, ground: fb[14], aimY: fb[15], dummy: fb[0] === 0,
-                name: p.name, color: p.color, gear: p.gear || {},
+                name: p.name, color: p.color, gear: p.gear || {}, weapon: fb[16] || null, uses: fb[17],
                 bomb: !!(b.s.bomb && b.s.bomb.id === fb[0]), bombT: b.s.bomb ? b.s.bomb.t : 0});
         }
-        return {s: b.s, f: out, an: b.s.an};
+        return {s: b.s, f: out, an: b.s.an, cr: b.s.cr || [], sh: b.s.sh || []};
     }
 
     function fighterNow(id) {
@@ -405,6 +478,10 @@
             drawHazards(v.s);
             for (const [x, y] of v.an)
                 drawAnvil(x, y);
+            for (const [x, y, , landed] of v.cr)
+                Weapons.drawCrate(ctx, x, y, landed, clock);
+            for (const [x, y, kind, vx] of v.sh)
+                Weapons.drawShot(ctx, kind, x, y, vx, clock);
             drawGhosts(dt);
             for (const f of v.f)
                 drawFighter(f, v.s);
@@ -412,6 +489,7 @@
         drawParticles(dt);
         if (lobby)
             Lobby.front(ctx, dt, v && v.f.find(f => f.id === myId), myId, hostId);
+        Lobby.drawPops(ctx, dt);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         if (cam.slow > 0) {                     // slow motion: a dark vignette
             const g = ctx.createRadialGradient(cw / 2, ch / 2, ch * 0.2, cw / 2, ch / 2, ch * 0.75);
@@ -563,7 +641,17 @@
             particles.push({k: 'dust', x: f.x, y: f.y - 20 - Math.random() * 40, vx: -f.vx * 0.05, vy: -40, life: 0,
                 max: 0.5, color: '#1e293b', size: 8});
         const flash = f.dummy && performance.now() - (flashes.get(0) || 0) < 90;
-        const head = drawRig(ctx, f, clock, {gloves: s.hz === 'gloves', flash});
+        const isHost = f.id === hostId && s.scene === 'lobby';
+        if (isHost && f.st !== 'ko') {                    // the room host: a lit ring at their feet
+            ctx.save();
+            ctx.strokeStyle = 'rgba(250, 204, 21, 0.75)';
+            ctx.shadowColor = '#facc15';
+            ctx.shadowBlur = 12;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.ellipse(f.x, f.y + 2, 30 + Math.sin(clock * 3) * 2, 7, 0, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+        }
+        const head = drawRig(ctx, f, clock, {gloves: s.hz === 'gloves', flash, eyes: gear.eyes});
         if (gear.hat === 'bandana')
             drawRibbons(f, head);
         if (f.st === 'ko' || f.dummy)
@@ -574,7 +662,26 @@
         ctx.textAlign = 'center';
         ctx.fillStyle = f.id === myId ? '#f1f5f9' : 'rgba(226, 232, 240, 0.7)';
         const ty = f.y - (gear.hat === 'kasa' || gear.hat === 'crown' ? 140 : 128) - (f.bomb ? 30 : 0);
-        ctx.fillText((f.id === hostId ? '👑 ' : '') + f.name, f.x, ty);
+        ctx.fillText(f.name, f.x, ty);
+        if (isHost) {                                     // 👑 ROOM HOST, lit, over the name
+            ctx.font = '800 11px system-ui, sans-serif';
+            const w = ctx.measureText('👑 ROOM HOST').width + 14;
+            ctx.fillStyle = 'rgba(250, 204, 21, 0.16)';
+            ctx.fillRect(f.x - w / 2, ty - 34, w, 18);
+            ctx.strokeStyle = 'rgba(250, 204, 21, 0.7)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(f.x - w / 2, ty - 34, w, 18);
+            ctx.fillStyle = '#facc15';
+            ctx.fillText('👑 ROOM HOST', f.x, ty - 21);
+            ctx.font = '600 14px system-ui, sans-serif';
+        } else if (f.id === hostId) {
+            ctx.fillText('👑', f.x - ctx.measureText(f.name).width / 2 - 12, ty);
+        }
+        if (f.weapon) {                                   // what's in hand, and how much is left
+            ctx.font = '700 11px system-ui, sans-serif';
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText(`${Weapons.KINDS[f.weapon].name.toUpperCase()} ${'●'.repeat(f.uses || 0)}`, f.x, ty + 30);
+        }
         if (s.scene === 'match' && s.mode === 'rumble') {
             ctx.fillStyle = 'rgba(148, 163, 184, 0.25)';
             ctx.fillRect(f.x - 28, ty + 6, 56, 4);
@@ -686,7 +793,7 @@
     function drawHud(v) {
         const s = v.s;
         const font = (wt, px) => `${wt} ${px}px system-ui, sans-serif`;
-        if (s.mode === 'koth' && s.act.length) {         // the two fighters' health across the top
+        if ((s.mode === 'koth' || s.mode === 'arcade') && s.act.length) {   // the two fighters' health across the top
             const barW = Math.min(340, cw * 0.34), y = 18;
             s.act.slice(0, 2).forEach((id, i) => {
                 const f = v.f.find(o => o.id === id);
@@ -722,6 +829,18 @@
             ctx.textAlign = 'center';
             ctx.fillStyle = s.bomb.t < 5 ? '#f43f5e' : '#facc15';
             ctx.fillText(`BOMB · ${nameOf(s.bomb.id)} · ${Math.max(0, s.bomb.t).toFixed(1)}s`, cw / 2, 30);
+        }
+        if (s.mode === 'arcade' && s.arcade) {
+            ctx.font = font(700, 12);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText(`ARCADE · STAGE ${s.arcade.stage} / ${s.arcade.of} · ${s.arcade.t}s`, cw / 2, 62);
+        }
+        if (s.tl !== null && s.tl !== undefined && s.ph === 'fight') {
+            ctx.font = font(800, 22);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = s.tl <= 10 ? '#f43f5e' : '#e5e7eb';
+            ctx.fillText(String(s.tl), cw / 2, s.mode === 'koth' || s.mode === 'arcade' ? 54 : 56);
         }
         if (s.hz) {
             ctx.font = font(600, 13);
@@ -790,6 +909,7 @@
         KeyA: IN.LEFT, ArrowLeft: IN.LEFT, KeyD: IN.RIGHT, ArrowRight: IN.RIGHT,
         KeyW: IN.UP | IN.JUMP, ArrowUp: IN.UP | IN.JUMP, Space: IN.JUMP, KeyS: IN.DOWN, ArrowDown: IN.DOWN,
         KeyJ: IN.LIGHT, KeyZ: IN.LIGHT, KeyK: IN.HEAVY, KeyX: IN.HEAVY, KeyL: IN.DASH, KeyC: IN.DASH,
+        KeyG: IN.GRAB,
     };
     const held = new Map();
     let touchBits = 0, mouseBits = 0, aim = null, sentK = -1, sentAim = null;
@@ -802,7 +922,7 @@
     }
 
     function pushInput(force) {
-        const k = Hud.isDrawerOpen() ? 0 : bits();
+        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() ? 0 : bits();
         if (force || k !== sentK || aim !== sentAim) {
             sentK = k; sentAim = aim;
             sendMsg({t: 'in', k, aim: mouseBits ? aim : null});
@@ -821,6 +941,10 @@
             return air ? (down ? '↓ + K  DIVE' : 'K  AIR KICK') : 'K  LAUNCHER';
         if (bit & IN.DASH)
             return 'L  DASH';
+        if (bit & IN.GRAB)
+            return 'G  GRAB';
+        if (bit & IN.USE)
+            return 'E  WEAPON';
         if (bit & IN.JUMP)
             return 'JUMP';
         if (bit & IN.LEFT)
@@ -828,7 +952,7 @@
         if (bit & IN.RIGHT)
             return '→';
         if (bit & IN.DOWN)
-            return '↓';
+            return air ? '↓' : '↓  GUARD';
         return null;
     }
 
@@ -841,13 +965,10 @@
                 trail: (me.gear || {}).trail || 'ghost'});
             held.clear();
             pushInput();
-        } else if (near === 'console') {
-            if (myId === hostId) {
-                sendMsg({t: 'console', do: 'start'});
-                Sfx.play('ui');
-            } else {
-                Hud.toast('Only the host (👑) can start the match');
-            }
+        } else if (near === 'console') {         // the match settings: the host edits, everyone can read
+            Hud.openSettings(Lobby.state.sel, myId === hostId, choices);
+            held.clear();
+            pushInput();
         }
     }
 
@@ -855,6 +976,43 @@
         if (Hud.isDrawerOpen()) {
             if (e.code === 'Escape' || e.code === 'KeyE')
                 Hud.closeDrawer();
+            return;
+        }
+        if (e.code === 'KeyH' && !e.repeat) {
+            Hud.toggleMoves();
+            return;
+        }
+        if (e.code === 'Escape') {
+            Hud.toggleMoves(false);
+            Hud.closeSettings();
+            return;
+        }
+        if (Hud.isSettingsOpen()) {
+            if (e.code === 'KeyE')
+                Hud.closeSettings();
+            else if (e.code === 'Enter' && myId === hostId) {
+                sendMsg({t: 'console', do: 'start'});
+                Hud.closeSettings();
+            } else if (e.code === 'KeyP' && myId === hostId) {
+                sendMsg({t: 'arcade'});
+                Hud.closeSettings();
+            }
+            return;
+        }
+        if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {
+            if (myId === hostId)
+                sendMsg({t: 'arcade'});
+            else
+                Hud.toast('Only the room host can start the arcade ladder');
+            return;
+        }
+        if (e.code === 'KeyE' && scene === 'match') {     // in a match, E picks up / throws a weapon
+            e.preventDefault();
+            if (!e.repeat) {
+                held.set('KeyE', IN.USE);
+                Hud.feed('E  WEAPON');
+                pushInput();
+            }
             return;
         }
         if (e.code in KEYS) {
@@ -928,31 +1086,22 @@
     if (isTouch()) {
         $('touch').classList.remove('hidden');
         document.body.classList.add('touch');
-    }
-    for (const b of document.querySelectorAll('#touch button')) {
-        if (b.dataset.use) {
-            b.addEventListener('pointerdown', e => {
-                e.preventDefault();
-                interact();
-            });
-            continue;
-        }
-        const bit = +b.dataset.k;
-        const down = e => {
-            e.preventDefault();
-            b.setPointerCapture?.(e.pointerId);
-            touchBits |= bit; b.classList.add('down');
-            pushInput();
-        };
-        const up = e => {
-            e.preventDefault();
-            touchBits &= ~bit; b.classList.remove('down');
-            pushInput();
-        };
-        b.addEventListener('pointerdown', down);
-        b.addEventListener('pointerup', up);
-        b.addEventListener('pointercancel', up);
-        b.addEventListener('lostpointercapture', up);
+        Touch.init({
+            bits(bit, on) {
+                touchBits = on ? touchBits | bit : touchBits & ~bit;
+                pushInput();
+            },
+            use() {                                  // E: a station in the lobby; a weapon in a match
+                if (scene === 'lobby')
+                    return interact();
+                touchBits |= IN.USE;
+                pushInput();
+                setTimeout(() => {
+                    touchBits &= ~IN.USE;
+                    pushInput();
+                }, 120);
+            },
+        });
     }
     // the first touch or key unlocks audio (browsers need a gesture)
     for (const ev of ['pointerdown', 'keydown'])

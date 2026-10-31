@@ -1,10 +1,19 @@
 # Stick Havoc: Tournament Edition
 
+**Created by Mehul** · [github.com/MehulK-techie/stick-havoc](https://github.com/MehulK-techie/stick-havoc) ·
+v1.2.0-tournament · MIT License
+
 An offline LAN stick-figure brawler for 2 to 10 players. One computer hosts;
 everyone else plays in a browser (Chrome, Firefox, Safari, Edge; Windows,
 macOS, Linux, Android, iOS). No internet, no installs on the players' side.
 
 ## Host a game
+
+The easy way: double-click **`run.sh`** (Linux, macOS) or **`run.bat`**
+(Windows). It checks for Node.js 18+, installs what's missing the first time,
+starts the server and opens the game in your browser.
+
+Or by hand:
 
 ```sh
 npm install      # once (express, ws, qrcode-terminal: plain JavaScript)
@@ -26,10 +35,24 @@ has joined (their names over their heads). Three stations:
   Golden Crown, Bandit Eyepatch) and a dash trail (ghost afterimages, neon
   sparkles, shadow smoke). Everyone sees the change at once; your look is
   remembered on that device.
-- **Host console** (middle): the wall screen shows the mode, the map,
-  `PLAYERS READY` and the join QR. The host (👑, the first to join) stands at
-  it: `Q` changes the mode, `Tab` the map, `E` starts: 3, 2, 1, and everyone
-  is on the stage.
+- **Host console** (middle): the stadium screen high on the wall shows the
+  room's settings, `PLAYERS READY` and the join QR. The room host (a lit
+  `👑 ROOM HOST` badge and a gold ring at their feet; the first to join, and
+  if they leave the next one, with a notice to everyone) presses `E` here for
+  the **match settings**: game mode (King of the Hill, Royal Rumble, Bomb Tag
+  or Random), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
+  weapons on or off, a player limit (2-10) and the map (or Random). Changes
+  show on everyone's screen at once; anyone else at the console sees them
+  read-only ("Waiting for Host to start..."). `Enter` starts: 3, 2, 1, and
+  everyone is on the stage. (`Q` / `Tab` cycle mode and map without the
+  drawer.)
+- **1P Arcade** (`P`, the host): a ladder of five computer opponents, one
+  round each, on the four arenas in turn: Rookie Stick (slow, basic),
+  Acrobat (jumps and dive kicks), Brawler (relentless strings, dash
+  cancels), Ninja (guards and parries, wall kicks, picks up weapons) and the
+  boss, **Shadow Mehul** (a dark figure with red eyes: juggles, grabs,
+  parries). `STAGE CLEAR! Time: XXs` between stages, with your health
+  restored; lose once and it's over. Anyone else in the room watches.
 - **Training dummy** (right): it springs back from every hit and pops the
   damage (`5 DMG`, `BOOM!`, `CRIT!`). Players can knock each other about in
   the lobby too, but nobody loses health there.
@@ -45,9 +68,18 @@ has joined (their names over their heads). Three stations:
 | Flying kick (air) / 45° dive kick (air) | `K` / `↓` + `K` | K / ▼ + K |
 | Dash: 10 frames invulnerable, cancels a punch's recovery | `L` or `C` | L |
 | Drop through a ledge | `↓` + jump | ▼ + ⤒ |
-| Use a station | `E` | E |
+| Guard (hold; just in time: parry) | `S` or `↓` | joystick down |
+| Grab & throw (goes through a guard) | `G` | G |
+| Use a station · pick up / throw a weapon | `E` | E |
+| Move list | `H` (or ? Moves) | ? Moves |
 | Punch where you point | left click | |
 | Emojis 🔥 💀 🤡 🚀 · vote | `5`–`8` · `1` `2` | the buttons |
+
+On a phone: a joystick appears wherever your left thumb lands (sideways
+moves, down guards, up aims the launcher); J, K, L and W sit on the right
+thumb's arc with E and G beside them, and every press gives a short buzz
+(where the browser allows vibration). Held upright, the game asks you to turn
+the phone sideways.
 
 The bar along the bottom lists the keys; the feed at bottom left shows your
 last four inputs (`↑ + J  LAUNCH`, `L  DASH`, …). Attacks turn you to face the
@@ -62,6 +94,19 @@ nearest opponent close by, as in Tekken.
 - Heavy hits freeze both fighters for 60 ms, shake the screen along the
   blow, and ragdoll the victim until they land. Hard hits bounce off walls.
 - Fall just past a ledge and you catch it (a second of invulnerability).
+- **Guard** (hold down on the ground): a fifth of the damage and no launch;
+  the third blocked hit in a row breaks the guard. Raise it just as a punch
+  lands and it's a **PARRY**: the attacker reels. A **grab** goes straight
+  through a guard and throws them the other way.
+- Hitting someone in the middle of their own attack is a **COUNTER** (+25%).
+  The combo counter at the left edge counts your hits and damage; callouts
+  pop over the fighters: `UPPERCUT!`, `PARRY!`, `GUARD BREAK!`, `THROW!`,
+  `3x COMBO!`, and `CLUTCH REVERSAL!` when a fighter under 25% lands the K.O.
+- **Weapons** (when on): every 14-20 s a crate parachutes onto a platform.
+  Walk over it (or `E`) to take the weapon; `J` uses it, `E` throws it.
+  Katana (5 fast, long slashes), Home-Run Bat (3 slow swings that send them
+  across the arena), Laser Blaster (3 shots, with recoil), Bouncy Bomb
+  (thrown: bounces twice, then blows everyone back).
 - Both fighters under 25 % and swinging at each other close up: 0.2x speed
   for 1.2 s, the camera closes in. The K.O. freezes, flashes and shakes.
 
@@ -94,7 +139,11 @@ also end it early (Back to lobby).
 | `public/engine.js` | The browser: draws at 60 fps, interpolating between snapshots; the camera; particles, trails, ribbons, banners; keyboard, mouse and touch input. |
 | `public/lobby.js` | The lobby room and its stations, the console's wall screen, the dummy's damage pops. |
 | `public/hud.js`, `public/style.css` | The command bar, the input feed, the wardrobe drawer, the match panels, the vote. |
+| `public/weapons.js` | The weapons: what each does, and how crates, weapons and shots look. |
+| `public/bot.js` | The computer fighters: one brain, five styles (the arcade ladder, the training bot). |
+| `public/touch.js` | The phone controls: the floating joystick, the thumb-arc buttons, vibration. |
 | `public/audio.js` | Every sound made with the Web Audio API: no audio files. |
+| `run.sh`, `run.bat` | One-click start for Linux/macOS and Windows. |
 
 Nothing is loaded from the internet: the QR code is made by the server.
 

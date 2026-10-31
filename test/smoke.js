@@ -12,6 +12,8 @@ const srv = spawn(process.execPath, [require.resolve('../server.js')],
 let out = '';
 srv.stdout.on('data', d => out += d);
 srv.stderr.on('data', d => process.stderr.write(d));
+process.on('exit', () => srv.kill());                 // never leave a server holding the port
+process.on('uncaughtException', e => { console.error(e); srv.kill(); process.exit(1); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let seen = new Set(), last = null, failures = 0;
 
@@ -83,13 +85,26 @@ async function brawl(fighters, ms) {
     const x0 = a.me()[1];
     a.send({t: 'in', k: P.IN.RIGHT}); await sleep(500); a.send({t: 'in', k: 0}); await sleep(200);
     check('you can walk around the lobby', a.me()[1] > x0 + 50);
-    a.send({t: 'look', name: 'Ana', color: '#f472b6', hat: 'kasa', trail: 'sparkle'});
+    a.send({t: 'look', name: 'Ana', color: '#2dd4bf', hat: 'kasa', trail: 'sparkle'});
     await sleep(200);
     const ana = a.roster.list.find(p => p.id === a.id);
     check('the wardrobe changes your look for everyone', b.roster.list.find(p => p.id === a.id).gear.hat === 'kasa' &&
-        ana.color === '#f472b6' && ana.name === 'Ana');
+        ana.color === '#2dd4bf' && ana.name === 'Ana');
     await walkTo(b, P.MAPS.lobby.stations.wardrobe.x);
     check('standing at the wardrobe says so', b.near === 'wardrobe');
+    // colours: one per player; changing frees the old one
+    const bColor = b.roster.list.find(p => p.id === b.id).color;
+    let refused = false;
+    c.ws.on('message', m => { if (JSON.parse(m).type === 'colorTaken') refused = true; });
+    c.send({t: 'look', color: bColor}); await sleep(250);
+    check('a colour someone wears cannot be taken', refused && c.roster.list.find(p => p.id === c.id).color !== bColor);
+    b.send({t: 'look', color: '#818cf8'}); await sleep(200);
+    c.send({t: 'look', color: bColor}); await sleep(250);
+    check('changing colour frees the old one', c.roster.list.find(p => p.id === c.id).color === bColor);
+    // the wardrobe's ghost: untouchable
+    b.send({t: 'ghost', on: true}); await sleep(150);
+    check('in the wardrobe you are a ghost', b.roster.list.find(p => p.id === b.id).ghost && last.f.find(f => f[0] === b.id)[18] === 1);
+    b.send({t: 'ghost', on: false}); await sleep(150);
     await walkTo(a, P.MAPS.lobby.stations.dummy.x - 50);
     seen = new Set();
     for (let i = 0; i < 6; i++) {
@@ -105,7 +120,7 @@ async function brawl(fighters, ms) {
     check('the host at the console', a.near === 'console' && a.roster.host === a.id);
     a.send({t: 'console', do: 'mode'}); await sleep(150);
     check('Q cycles the mode', last.sel.mode === 'rumble');
-    a.send({t: 'console', do: 'mode'}); a.send({t: 'console', do: 'mode'}); a.send({t: 'console', do: 'mode'});
+    for (let i = 0; i < 5; i++) a.send({t: 'console', do: 'mode'});   // round the six modes, back to King of the Hill
     a.send({t: 'console', do: 'map'}); await sleep(150);
     check('Tab cycles the map', last.sel.mode === 'koth' && last.sel.map === 'reactor');
     // the match settings: the host sets them, everyone sees them, nobody else can
@@ -142,6 +157,24 @@ async function brawl(fighters, ms) {
     await until(() => last.ph === 'ko', 4000);              // the K.O. plays out, then the next round
     await until(() => last.ph === 'countdown' || last.ph === 'fight', 6000);
     check('the loser went to the back, the next one came in', last.act.includes(queued.id) && last.q.length === 1);
+    // ---------------- Banger Shuffle: never the same mode or map twice running
+    a.send({t: 'lobby'});
+    await until(() => last.scene === 'lobby', 2000);
+    a.send({t: 'settings', key: 'mode', value: 'shuffle'}); a.send({t: 'settings', key: 'map', value: 'shuffle'});
+    a.send({t: 'settings', key: 'limit', value: 15}); await sleep(150);
+    check('15 players allowed', last.sel.limit === 15);
+    const picks = [];
+    for (let i = 0; i < 4; i++) {
+        a.send({t: 'console', do: 'start'});
+        await until(() => last.scene === 'match', 6000);
+        picks.push(`${last.mode}/${last.map}`);
+        a.send({t: 'lobby'});
+        await until(() => last.scene === 'lobby', 2000);
+    }
+    check('Banger Shuffle never repeats a mode or a map back to back', picks.every((p, i) => i === 0 ||
+        (p.split('/')[0] !== picks[i - 1].split('/')[0] && p.split('/')[1] !== picks[i - 1].split('/')[1])));
+    a.send({t: 'settings', key: 'mode', value: 'koth'}); a.send({t: 'settings', key: 'map', value: 'reactor'});
+    await sleep(150);
     // ---------------- back to the lobby, then Bomb Tag
     a.send({t: 'lobby'});
     check('the host takes everyone back to the lobby', await until(() => last.scene === 'lobby', 2000));

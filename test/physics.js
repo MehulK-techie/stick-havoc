@@ -201,5 +201,79 @@ function run(w, frames, inputs) {
     run(w, 1, {1: {k: P.IN.USE}});
     check('E throws the weapon you hold', !a.weapon && w.shots.some(s => s.kind === 'thrown'));
 }
+{   // the wardrobe's ghost: nobody can hit or throw you
+    const w = world('lobby'); w.noDamage = true; const a = fighter(w, 1, 700, 800), b = fighter(w, 2, 750, 800);
+    a.face = 1; b.ghost = true;
+    const ev = [...run(w, 6, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}})), ...run(w, 6, i => ({1: {k: i === 0 ? P.IN.GRAB : 0}}))];
+    check('a ghost can\'t be hit or grabbed', !ev.some(e => e.on === 2) && b.vx === 0);
+}
+{   // the lobby ball flies off a punch
+    const w = world('lobby'); const a = fighter(w, 1, 470, 800); a.face = 1; w.ball.x = 515; w.ball.y = 742;
+    const ev = run(w, 6, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    check('the ball flies off a punch', ev.some(e => e.type === 'kick') && w.ball.vx > 500);
+}
+{   // the parkour tower: the clock starts on the first step and stops at the top
+    const w = world('lobby'); const f = fighter(w, 1, 1480, 440); f.ground = false;
+    run(w, 3, {});
+    Object.assign(f, {x: 1470, y: 60, vy: 100, ground: false});
+    const ev = run(w, 3, {});
+    check('the climb is timed', ev.some(e => e.type === 'climb' && e.id === 1 && e.t >= 0));
+}
+{   // the Magma Foundry: lava throws you up; a moving plate carries you
+    const w = world('magma'); const f = fighter(w, 1, 300, 870); f.ground = false;
+    const ev = run(w, 2, {});
+    check('lava launches you upwards', ev.some(e => e.type === 'lava') && f.vy < -800 && f.hp < 100);
+    const w2 = world('magma'); const g = fighter(w2, 1, 0, 0);
+    run(w2, 1, {});
+    const plate = w2.plats[2]; Object.assign(g, {x: plate.x + 100, y: plate.y, ground: true, plat: plate, vy: 0});
+    const x0 = g.x;
+    run(w2, 10, {});
+    check('a hover plate carries whoever stands on it', g.ground && Math.abs(g.x - x0) > 5);
+}
+{   // the Sky Train: wind pushes you back in the air; the tunnel hits you standing, not ducking
+    const w = world('skytrain'); const f = fighter(w, 1, 800, 600); f.ground = false;
+    run(w, 6, {});
+    check('the slipstream pushes airborne fighters back', f.vx < -30);
+    const w2 = world('skytrain'); const up = fighter(w2, 1, 600, 720), down = fighter(w2, 2, 1000, 720);
+    run(w2, 3, {2: {k: P.IN.DOWN}});
+    w2.tunnel.next = 0.05;
+    const ev = run(w2, 40, {2: {k: P.IN.DOWN}});
+    check('the tunnel hits a standing fighter, a ducking one goes under', ev.some(e => e.kind === 'tunnel' && e.on === 1) &&
+        !ev.some(e => e.kind === 'tunnel' && e.on === 2));
+}
+{   // Floor Is Lava: the floor burns; a hit in the air gives your jumps back
+    const w = world('reactor'); w.floorLava = w.airReset = true; w.hotT = 0;
+    const f = fighter(w, 1, 800);
+    const ev = run(w, 2, {});
+    check('a hot floor burns whoever stands on it', ev.some(e => e.type === 'hot') && ev.some(e => e.type === 'lava'));
+    const w2 = world('reactor'); w2.airReset = true; const a = fighter(w2, 1, 800, 600), b = fighter(w2, 2, 850, 600);
+    a.ground = b.ground = false; a.jumps = 0; a.face = 1; a.st = b.st = 'air';
+    run(w2, 3, i => ({1: {k: i === 0 ? P.IN.HEAVY : 0}}));
+    check('landing a hit in the air gives a jump back', a.jumps >= 1 && b.hp < 100);
+    void f;
+}
+{   // the practice bot: strings J J K at a passive opponent, guards or parries one who attacks
+    const Bot = require('../public/bot.js');
+    const w = world('colosseum'); const me = fighter(w, 1, 700), bot = fighter(w, -1, 760); const mem = {};
+    const kinds = new Set();
+    for (let i = 0; i < 300; i++) {
+        w.events = [];
+        P.step(w, {[-1]: {k: Bot.think(bot, w, 'sparHard', mem, 1 / 30)}, 1: {k: 0}}, 1 / 30);
+        for (const e of w.events) if (e.type === 'hit' && e.by === -1) kinds.add(e.kind);
+        if (me.st === 'ko' || me.hp < 30) Object.assign(me, {hp: 100, x: bot.x + 60, st: 'idle', vx: 0, vy: 0, y: 820});
+    }
+    check('the practice bot lands jab, hook and uppercut', kinds.has('jab') && kinds.has('hook') && kinds.has('uppercut'));
+    const w2 = world('colosseum'); const att = fighter(w2, 1, 700), def = fighter(w2, -1, 750); att.face = 1;
+    const mem2 = {}, seen = new Set();
+    for (let i = 0; i < 240; i++) {
+        w2.events = [];
+        P.step(w2, {1: {k: i % 12 === 0 ? P.IN.LIGHT : 0}, [-1]: {k: Bot.think(def, w2, 'sparHard', mem2, 1 / 30)}}, 1 / 30);   // (a jab every 0.4 s: room to react)
+        for (const e of w2.events) seen.add(e.type);
+        att.x = def.x - 50; att.face = 1;
+        Object.assign(att, {stun: 0, st: att.st === 'hurt' ? 'idle' : att.st, hp: 100});   // a relentless attacker
+        if (def.hp < 40) def.hp = 100;
+    }
+    check('it guards or parries an attacker', seen.has('block') || seen.has('parry'));
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

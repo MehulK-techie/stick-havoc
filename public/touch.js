@@ -11,7 +11,8 @@ const Touch = (() => {
         ['L', 'DASH', IN.DASH, 58, 24, 74],
         ['W', 'JUMP', IN.JUMP, 58, 40, 158],
     ];
-    const PILLS = [['E', null, 52, 196, 40], ['G', IN.GRAB, 52, 196, 84]];
+    // E and G sit well left of the thumb's arc (60+ px from J), so they're never hit by accident
+    const PILLS = [['E', null, 52, 252, 34], ['G', IN.GRAB, 52, 252, 80]];
     let api = null, stickBits = 0;
 
     function buzz(ms = 15) {

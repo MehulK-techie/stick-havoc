@@ -5,13 +5,14 @@ const Hud = (() => {
     const $ = id => document.getElementById(id);
     let send = () => {};
     let look = null;                  // {name, color, hat, trail}: what the wardrobe shows
+    let rosterNow = new Map(), meId = null;   // who holds which colour (each colour: one player)
     let options = null;               // the wardrobe's choices, from the server
     let voted = null;
 
     // ------------------------------------------------------------ the command bar
     const COMMANDS = {
         lobby: [['A / D', 'Move'], ['W', 'Jump'], ['J', 'Punch'], ['K', 'Launcher'], ['S', 'Guard'], ['G', 'Grab'],
-            ['L', 'Dash'], ['E', 'Use'], ['H', 'Moves']],
+            ['L', 'Dash'], ['E', 'Use'], ['P', 'Spar'], ['Shift', 'Moves']],
         match: [['A / D', 'Move'], ['W', 'Jump'], ['J', 'Punch'], ['K', 'Launcher'], ['S', 'Guard'], ['G', 'Grab'],
             ['L', 'Dash'], ['E', 'Weapon']],
     };
@@ -86,8 +87,10 @@ const Hud = (() => {
             b.className = 'sw';
             b.style.background = c;
             b.title = n;
+            b.dataset.color = c;
             return b;
         });
+        lockColors();
         const chip = (_v, label) => {
             const b = document.createElement('button');
             b.textContent = label;
@@ -97,6 +100,25 @@ const Hud = (() => {
         fill($('dTrails'), Object.entries(options.trails), 'trail', chip);
         $('drawer').classList.add('open');
         Sfx.play('open');
+    }
+
+    // colours someone else wears: locked, with their initial on the swatch
+    function lockColors() {
+        const owners = new Map([...rosterNow.values()].filter(p => !p.bot && p.id !== meId).map(p => [p.color, p.name]));
+        for (const b of $('dColors').children) {
+            const who = owners.get(b.dataset.color);
+            b.disabled = !!who;
+            b.classList.toggle('taken', !!who);
+            b.textContent = who ? who.trim()[0].toUpperCase() : '';
+            b.title = who ? `Taken by ${who}` : b.title.replace(/^Taken by .*/, b.dataset.color);
+        }
+    }
+
+    function setRoster(roster, myId) {
+        rosterNow = roster;
+        meId = myId;
+        if (isDrawerOpen())
+            lockColors();
     }
 
     function push() {
@@ -112,6 +134,7 @@ const Hud = (() => {
         $('dName').blur();
         $('drawer').classList.remove('open');
         push();
+        send({t: 'ghost', on: false});        // out of the wardrobe: solid again
     }
 
     const isDrawerOpen = () => $('drawer').classList.contains('open');
@@ -126,17 +149,18 @@ const Hud = (() => {
     // ------------------------------------------------------------ the match panels
     function match(s, roster, myId) {
         $('iMode').textContent = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag',
-            arcade: '1P Arcade'}[s.mode] || '';
+            arcade: '1P Arcade', lava: 'Floor Is Lava', spar: 'Practice'}[s.mode] || '';
         $('iMap').textContent = Physics.MAPS[s.map] ? Physics.MAPS[s.map].name : '';
-        $('iRound').textContent = s.arcade ? `Stage ${s.arcade.stage} of ${s.arcade.of} · ${s.arcade.t}s` :
+        $('iRound').textContent = s.spar ? `Bot: ${s.spar} · B switches · Esc leaves` :
+            s.arcade ? `Stage ${s.arcade.stage} of ${s.arcade.of} · ${s.arcade.t}s` :
             `Round ${s.round} · first to ${s.target}${s.tl !== null ? ` · ${s.tl}s left` : ''}`;
-        $('iEnd').classList.toggle('hidden', s.host !== myId);
+        $('iEnd').classList.toggle('hidden', s.host !== myId && s.mode !== 'spar');
         const list = $('bList');
         list.textContent = '';
         const wins = new Map(s.wins);
         let ids, title;
-        if (s.mode === 'koth') {
-            title = 'Next up'; ids = s.q;
+        if (s.mode === 'koth') {                // the queue, ranked: who's fighting, who's next
+            title = 'Queue'; ids = [...s.act, ...s.q];
         } else if (s.mode === 'bomb') {
             title = 'Still in'; ids = s.f.filter(f => f[7] !== 'ko').map(f => f[0]);
         } else {
@@ -148,7 +172,9 @@ const Hud = (() => {
             if (!p)
                 continue;
             const li = document.createElement('li');
-            li.textContent = `${p.name}${wins.get(id) ? '  ' + '★'.repeat(Math.min(5, wins.get(id))) : ''}${id === myId ? ' (you)' : ''}`;
+            const rank = s.mode === 'koth' ? `#${list.children.length + 1} ${list.children.length < s.act.length ? 'Fighting' :
+                list.children.length === s.act.length ? 'Next' : 'Waiting'} · ` : '';
+            li.textContent = `${rank}${p.name}${wins.get(id) ? '  ' + '★'.repeat(Math.min(5, wins.get(id))) : ''}${id === myId ? ' (you)' : ''}`;
             li.style.color = p.color;
             list.appendChild(li);
         }
@@ -195,7 +221,8 @@ const Hud = (() => {
 
     // ------------------------------------------------------------ the match settings (host console)
     const LABELS = {
-        mode: ['Game mode', {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', random: 'Random'}],
+        mode: ['Game mode', {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', lava: 'Floor Is Lava',
+            random: 'Random', shuffle: 'Banger Shuffle'}],
         target: ['Match', {3: 'First to 3', 5: 'First to 5', 7: 'First to 7'}],
         timer: ['Round timer', {45: '45 s', 60: '60 s', 90: '90 s', 0: '∞'}],
         weapons: ['Weapons', {true: 'On', false: 'Off'}],
@@ -233,6 +260,7 @@ const Hud = (() => {
             for (const value of choices[key]) {
                 const b = document.createElement('button');
                 b.textContent = names ? names[value] : key === 'map' ? (value === 'random' ? 'Random' :
+                    value === 'shuffle' ? 'Banger Shuffle' :
                     Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
                 b.classList.toggle('on', sel[key] === value);
                 b.disabled = !isHost;
@@ -298,7 +326,7 @@ const Hud = (() => {
 
     return {
         init(sender) { send = sender; },
-        setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast,
+        setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
         openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo,
     };
 })();

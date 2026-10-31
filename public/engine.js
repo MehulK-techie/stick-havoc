@@ -9,6 +9,8 @@
 
     // ------------------------------------------------------------ state
     let ws = null, myId = null, hostId = null, choices = null, scene = 'lobby';
+    let sparring = false;               // practice against the bot, simulated in this browser (spar.js)
+    let serverNear = null;              // the station the server says you stand at (kept through sparring)
     let roster = new Map();             // id -> {name, color, gear, wins, bot}
     let snaps = [];                     // [{at, s}] newest last
     let map = 'lobby', plats = stage('lobby');
@@ -28,11 +30,18 @@
             } catch {
                 return;
             }
-            if (m.type === 's')
-                onSnapshot(m);
+            if (m.type === 's') {
+                if (!sparring)
+                    onSnapshot(m);
+                else if (m.scene !== 'lobby' || m.starting !== null || m.ev.some(e => e.type === 'starting'))
+                    endSpar(true);              // the host is starting a match: everyone in, now
+                else
+                    Object.assign(Lobby.state, {sel: m.sel, ready: m.ready, starting: m.starting});
+            }
             else if (m.type === 'roster') {
                 roster = new Map(m.list.map(p => [p.id, p]));
                 hostId = m.host;
+                Hud.setRoster(roster, myId);
             } else if (m.type === 'welcome') {
                 myId = m.id;
                 Hud.setOptions({colors: m.colors, hats: m.hats, trails: m.trails});
@@ -41,9 +50,11 @@
                 $('ver').textContent = 'v' + m.version;
                 restoreLook();
             } else if (m.type === 'near') {
-                Lobby.state.near = m.station;
+                Lobby.state.near = serverNear = m.station;
                 if (m.station)
                     Sfx.play('near');
+            } else if (m.type === 'colorTaken') {
+                Hud.toast(`That colour is ${m.by}'s: pick a free one`);
             } else if (m.type === 'full') {
                 Hud.toast('The room is full (10 players)', 6000);
             }
@@ -55,6 +66,8 @@
     }
 
     function sendMsg(m) {
+        if (sparring && m.t === 'lobby')
+            return endSpar(false);              // "Back to lobby" while practising: stop practising
         if (ws && ws.readyState === 1)
             ws.send(JSON.stringify(m));
     }
@@ -83,6 +96,9 @@
         s.pl.forEach((p, i) => {
             if (plats[i]) {
                 plats[i].alive = !!p[0]; plats[i].breaking = p[1]; plats[i].load = p[2]; plats[i].hp = p[3];
+                if (p[4] !== undefined) {         // (moving platforms move)
+                    plats[i].x = p[4]; plats[i].y = p[5];
+                }
             }
         });
         Object.assign(Lobby.state, {sel: s.sel, ready: s.ready, max: s.max, starting: s.starting});
@@ -128,8 +144,46 @@
         }
     }
 
-    const nameOf = id => (roster.get(id) || {name: '?'}).name;
-    const colorOf = id => (roster.get(id) || {color: '#e5e7eb'}).color;
+    function info(id) {
+        if (id < 0 && sparring)
+            return Spar.botInfo();
+        return roster.get(id) || {name: '?', color: '#e5e7eb', gear: {}};
+    }
+    const nameOf = id => info(id).name;
+    const colorOf = id => info(id).color;
+
+    // ------------------------------------------------------------ practice sparring
+    function startSpar() {
+        if (scene !== 'lobby' || sparring || myId === null)
+            return;
+        const me = roster.get(myId) || {};
+        Spar.start(myId, {name: me.name || 'You', color: me.color || '#22d3ee', gear: me.gear || {}});
+        sparring = true;
+        snaps = [];
+        sendMsg({t: 'in', k: 0});
+        sendMsg({t: 'spar', on: true});
+        Hud.closeDrawer();
+        Hud.closeSettings();
+        banner('PRACTICE', '#22d3ee', 1.2, 80);
+        Hud.toast('Practice bot · B: Medium / Hard · Esc or P: back to the lobby', 4000);
+        Sfx.play('warp');
+    }
+
+    function endSpar(warp) {
+        if (!sparring)
+            return;
+        Spar.stop();
+        sparring = false;
+        snaps = [];
+        sendMsg({t: 'spar', on: false});
+        Lobby.state.near = serverNear;
+        cam.flash = 0.8;
+        Sfx.play('warp');
+        if (warp) {                             // pulled into the host's match
+            banner('MATCH STARTING', '#22d3ee', 1.2, 64);
+            ring(W / 2, H / 2, '#22d3ee');
+        }
+    }
 
     function onEvent(ev) {
         switch (ev.type) {
@@ -150,6 +204,41 @@
         case 'pop':
             Lobby.pop(ev);
             break;
+        case 'colorClaimed':
+            if (ev.id === myId)
+                Sfx.play('claim');
+            break;
+        case 'kick':
+            burst(ev.x, ev.y, '#e5e7eb', 8, 400);
+            Sfx.play('kick');
+            break;
+        case 'climb':
+            Lobby.pop({text: `CLIMB TIME: ${ev.t.toFixed(1)}s`, x: ev.x, y: ev.y - 120, big: true, color: '#22d3ee'});
+            if (ev.id === myId)
+                Hud.toast(`Parkour tower: ${ev.t.toFixed(1)} s`);
+            Sfx.play('fight');
+            break;
+        case 'lava':
+            burst(ev.x, ev.y, '#fb923c', 18, 700, 0, -1);
+            Sfx.play('sizzle');
+            if (ev.id === myId)
+                Touch.buzz(30);
+            break;
+        case 'hotWarn':
+            Hud.toast('The floor turns to lava in 3 s: get airborne!');
+            Sfx.play('beep');
+            break;
+        case 'hot':
+            banner('FLOOR IS LAVA', '#fb923c', 1.4, 70);
+            Sfx.play('hazard');
+            break;
+        case 'cool':
+            Hud.toast('The floor has cooled');
+            break;
+        case 'tunnelWarn':
+            Hud.toast('Tunnel ahead: duck (hold S)!');
+            Sfx.play('beep');
+            break;
         case 'callout':                          // PARRY!, COUNTER!, GUARD BREAK!, UPPERCUT!, THROW!, ...
             Lobby.pop({text: ev.text, x: ev.x, y: ev.y, big: true,
                 color: /REVERSAL|BREAK/.test(ev.text) ? '#f43f5e' : /PARRY/.test(ev.text) ? '#22d3ee' : '#facc15'});
@@ -160,6 +249,7 @@
             if (ev.by === myId || !fighterNow(myId))
                 Hud.combo(ev.n, ev.dmg, ev.crit, colorOf(ev.by));
             if (ev.n === 3) {
+                Sfx.play('bassdrop');
                 const f = fighterNow(ev.on);
                 if (f)
                     Lobby.pop({text: '3x COMBO!', x: f[1], y: f[2] - 160, big: true, color: '#facc15'});
@@ -171,7 +261,7 @@
             break;
         case 'parry':
             ring(ev.x, ev.y, '#22d3ee');
-            Sfx.play('parry');
+            Sfx.play('clash');
             break;
         case 'guardbreak':
             burst(ev.x, ev.y, '#f43f5e', 16, 600);
@@ -309,8 +399,9 @@
             Sfx.play('boom');
             break;
         case 'emoji':
-            floaters.push({e: ev.e, x: 0.1 + Math.random() * 0.8, y: 1.02, vy: 0.11 + Math.random() * 0.06,
-                wob: Math.random() * 6, size: 30 + Math.random() * 16, life: 0});
+            // up the side gutters only: the middle of the arena stays clear
+            floaters.push({e: ev.e, x: Math.random() < 0.5 ? 0.025 + Math.random() * 0.045 : 0.93 + Math.random() * 0.045,
+                y: 0.98, vy: 0.22 + Math.random() * 0.06, wob: Math.random() * 6, size: 24 + Math.random() * 10, life: 0});
             Sfx.play('emoji');
             break;
         case 'vote':
@@ -388,12 +479,11 @@
         for (const fb of b.s.f) {
             const fa = a.s.f.find(f => f[0] === fb[0]) || fb;
             const lerp = i => fa[i] + (fb[i] - fa[i]) * k;
-            const p = fb[0] === 0 ? {name: 'Dummy', color: '#94a3b8', gear: {}} :
-                roster.get(fb[0]) || {name: '?', color: '#e5e7eb', gear: {}};
+            const p = fb[0] === 0 ? {name: 'Dummy', color: '#94a3b8', gear: {}} : info(fb[0]);
             out.push({id: fb[0], x: lerp(1), y: lerp(2), vx: fb[3], vy: fb[4], face: fb[5], hp: fb[6], st: fb[7],
                 ak: fb[8] || null, ap: fb[9], combo: fb[10], inv: fb[11], shield: fb[12],
                 spin: fa[13] + (fb[13] - fa[13]) * k, ground: fb[14], aimY: fb[15], dummy: fb[0] === 0,
-                name: p.name, color: p.color, gear: p.gear || {}, weapon: fb[16] || null, uses: fb[17],
+                name: p.name, color: p.color, gear: p.gear || {}, weapon: fb[16] || null, uses: fb[17], ghost: fb[18],
                 bomb: !!(b.s.bomb && b.s.bomb.id === fb[0]), bombT: b.s.bomb ? b.s.bomb.t : 0});
         }
         return {s: b.s, f: out, an: b.s.an, cr: b.s.cr || [], sh: b.s.sh || []};
@@ -426,6 +516,11 @@
         const dt = Math.min(0.05, (now - lastFrame) / 1000);
         lastFrame = now;
         clock += dt;
+        if (sparring) {
+            const s = Spar.frame(dt);
+            if (s)
+                onSnapshot(s);
+        }
         const v = view();
         updateCamera(v, dt);
         draw(v, dt);
@@ -447,6 +542,8 @@
             }
         } else if (fs.length) {
             const xs = fs.map(f => f.x), ys = fs.map(f => f.y - 50);
+            if (v.s.lavaY !== null && v.s.lavaY !== undefined)
+                ys.push(v.s.lavaY - 20);                // keep the rising lava in sight
             const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
             tx = (x0 + x1) / 2; ty = (y0 + y1) / 2;
             tz = Math.max(1, Math.min(1.35, Math.min(cw / ((x1 - x0 + 520) * base), ch / ((y1 - y0 + 420) * base))));
@@ -480,6 +577,10 @@
                 drawAnvil(x, y);
             for (const [x, y, , landed] of v.cr)
                 Weapons.drawCrate(ctx, x, y, landed, clock);
+            if (v.s.ball)
+                drawBall(v.s.ball);
+            if (v.s.tunnel)
+                drawTunnel(v.s.tunnel);
             for (const [x, y, kind, vx] of v.sh)
                 Weapons.drawShot(ctx, kind, x, y, vx, clock);
             drawGhosts(dt);
@@ -504,6 +605,7 @@
         }
         if (v && !lobby)
             drawHud(v);
+        drawSpeedLines(v);
         drawFloaters(dt);
         drawBanners(dt);
     }
@@ -604,7 +706,61 @@
         }
     }
 
+    function drawBall([x, y]) {
+        ctx.save();
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {                // panel lines, turning as it rolls
+            const a = x / 18 + i * Math.PI * 2 / 5;
+            ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 18, y + Math.sin(a) * 18);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawTunnel(t) {
+        const roof = plats[0].y;
+        if (t.warn) {
+            ctx.fillStyle = Math.floor(clock * 6) % 2 ? 'rgba(250, 204, 21, 0.9)' : 'rgba(250, 204, 21, 0.3)';
+            ctx.beginPath(); ctx.arc(W - 30, roof - 160, 10, 0, Math.PI * 2); ctx.fill();
+        }
+        if (t.x !== null) {                           // the tunnel mouth: a bar at head height
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(t.x - 24, -200, 48, roof - 140 + 200);
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(t.x - 24, roof - 150, 48, 10);
+        }
+    }
+
     function drawHazards(s) {
+        if (s.lavaY !== null && s.lavaY !== undefined) {   // the foundry's molten pool
+            const g = ctx.createLinearGradient(0, s.lavaY - 30, 0, s.lavaY + 120);
+            g.addColorStop(0, 'rgba(251, 146, 60, 0)');
+            g.addColorStop(0.25, 'rgba(249, 115, 22, 0.85)');
+            g.addColorStop(1, 'rgba(127, 29, 29, 1)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(-200, H + 300);
+            for (let x = -200; x <= W + 200; x += 40)
+                ctx.lineTo(x, s.lavaY + Math.sin(x / 60 + clock * 3) * 6);
+            ctx.lineTo(W + 200, H + 300);
+            ctx.fill();
+        }
+        if (s.heat && s.heat.hot > 0) {               // Floor Is Lava: every platform glows
+            ctx.save();
+            ctx.shadowColor = '#f97316';
+            ctx.shadowBlur = 18;
+            ctx.fillStyle = 'rgba(249, 115, 22, 0.75)';
+            for (const p of plats)
+                if (p.alive) ctx.fillRect(p.x, p.y - 4, p.w, 8);
+            ctx.restore();
+        }
         if (s.beam && s.beam.ph === 'sweep') {          // the reactor beam
             const x = s.beam.x, top = MAPS[map].beam.top - 40;
             const g = ctx.createLinearGradient(x - 40, 0, x + 40, 0);
@@ -641,6 +797,21 @@
             particles.push({k: 'dust', x: f.x, y: f.y - 20 - Math.random() * 40, vx: -f.vx * 0.05, vy: -40, life: 0,
                 max: 0.5, color: '#1e293b', size: 8});
         const flash = f.dummy && performance.now() - (flashes.get(0) || 0) < 90;
+        if (fast && gear.trail === 'rainbow')
+            for (let i = 0; i < 2; i++)
+                particles.push({k: 'spark', x: f.x - f.face * i * 6, y: f.y - 20 - Math.random() * 60, vx: -f.vx * 0.15,
+                    vy: 0, life: 0, max: 0.4, color: `hsl(${(clock * 400 + i * 60) % 360}, 90%, 65%)`, size: 3});
+        else if (fast && gear.trail === 'pixel' && Math.random() < 0.8)
+            particles.push({k: 'pixel', x: f.x + (Math.random() - 0.5) * 20, y: f.y - Math.random() * 80, vx: -f.vx * 0.05,
+                vy: -30, life: 0, max: 0.5, color: f.color, size: 5});
+        if (f.ghost && f.st !== 'ko') {                 // in the wardrobe or sparring: a see-through ghost
+            ctx.save();
+            ctx.globalAlpha = 0.35 + 0.15 * Math.sin(clock * 5);
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.ellipse(f.x, f.y - 48, 34, 58, 0, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+        }
         const isHost = f.id === hostId && s.scene === 'lobby';
         if (isHost && f.st !== 'ko') {                    // the room host: a lit ring at their feet
             ctx.save();
@@ -651,7 +822,7 @@
             ctx.beginPath(); ctx.ellipse(f.x, f.y + 2, 30 + Math.sin(clock * 3) * 2, 7, 0, 0, Math.PI * 2); ctx.stroke();
             ctx.restore();
         }
-        const head = drawRig(ctx, f, clock, {gloves: s.hz === 'gloves', flash, eyes: gear.eyes});
+        const head = drawRig(ctx, f, clock, {gloves: s.hz === 'gloves', flash, eyes: gear.eyes, alpha: f.ghost ? 0.45 : 1});
         if (gear.hat === 'bandana')
             drawRibbons(f, head);
         if (f.st === 'ko' || f.dummy)
@@ -767,6 +938,12 @@
             p.vx *= Math.exp(-dt * (p.k === 'dust' ? 4 : 2));
             p.x += p.vx * dt;
             p.y += p.vy * dt;
+            if (p.k === 'pixel') {                    // pixel dust: little squares
+                ctx.globalAlpha = a;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(Math.round(p.x / 4) * 4, Math.round(p.y / 4) * 4, p.size, p.size);
+                continue;
+            }
             if (p.k === 'spark') {
                 ctx.globalAlpha = a;
                 ctx.strokeStyle = p.color;
@@ -793,11 +970,11 @@
     function drawHud(v) {
         const s = v.s;
         const font = (wt, px) => `${wt} ${px}px system-ui, sans-serif`;
-        if ((s.mode === 'koth' || s.mode === 'arcade') && s.act.length) {   // the two fighters' health across the top
+        if ((s.mode === 'koth' || s.mode === 'arcade' || s.mode === 'spar') && s.act.length) {   // the two fighters' health across the top
             const barW = Math.min(340, cw * 0.34), y = 18;
             s.act.slice(0, 2).forEach((id, i) => {
                 const f = v.f.find(o => o.id === id);
-                const p = roster.get(id) || {name: '?', color: '#e5e7eb'};
+                const p = info(id);
                 const hp = f ? Math.max(0, f.hp) : 0;
                 const shown = shownHp.get(id) ?? hp;
                 shownHp.set(id, shown + (hp - shown) * 0.1);
@@ -862,19 +1039,35 @@
         }
     }
 
+    // dashing fast: streaks along the screen's edges
+    function drawSpeedLines(v) {
+        const me = v && v.f.find(f => f.id === myId);
+        if (!me || !(me.st === 'dash' || Math.abs(me.vx) > 800))
+            return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(226, 232, 240, 0.22)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 14; i++) {
+            const y = (i * 97 + clock * 900) % ch, len = 60 + (i * 37) % 120;
+            const x = i % 2 ? (clock * 1400 * -me.face + i * 211) % (cw * 0.12) : cw - ((clock * 1400 + i * 173) % (cw * 0.12));
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - me.face * len, y); ctx.stroke();
+        }
+        ctx.restore();
+    }
+
     function drawFloaters(dt) {
         ctx.save();
         ctx.textAlign = 'center';
         for (const fl of floaters) {
             fl.life += dt;
             fl.y -= fl.vy * dt;
-            ctx.globalAlpha = Math.min(1, Math.max(0, fl.y * 1.6));
+            ctx.globalAlpha = Math.max(0, 1 - fl.life / 2);          // gone after 2 s
             ctx.font = `${fl.size}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-            ctx.fillText(fl.e, fl.x * cw + Math.sin(fl.life * 3 + fl.wob) * 16, fl.y * ch);
+            ctx.fillText(fl.e, fl.x * cw + Math.sin(fl.life * 4 + fl.wob) * 8, fl.y * ch);
         }
         ctx.restore();
         for (let i = floaters.length - 1; i >= 0; i--) {
-            if (floaters[i].y < -0.1)
+            if (floaters[i].life > 2)
                 floaters.splice(i, 1);
         }
     }
@@ -923,6 +1116,8 @@
 
     function pushInput(force) {
         const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() ? 0 : bits();
+        if (sparring)
+            return Spar.input(k, mouseBits ? aim : null);
         if (force || k !== sentK || aim !== sentAim) {
             sentK = k; sentAim = aim;
             sendMsg({t: 'in', k, aim: mouseBits ? aim : null});
@@ -959,8 +1154,11 @@
     // E: the station you stand at (the wardrobe, or the host's console)
     function interact() {
         const near = Lobby.state.near;
-        if (near === 'wardrobe') {
+        if (near === 'dojo') {
+            startSpar();
+        } else if (near === 'wardrobe') {
             const me = roster.get(myId) || {};
+            sendMsg({t: 'ghost', on: true});         // untouchable while customizing
             Hud.openDrawer({name: me.name || '', color: me.color, hat: (me.gear || {}).hat || null,
                 trail: (me.gear || {}).trail || 'ghost'});
             held.clear();
@@ -978,8 +1176,16 @@
                 Hud.closeDrawer();
             return;
         }
-        if (e.code === 'KeyH' && !e.repeat) {
-            Hud.toggleMoves();
+        if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) {
+            Hud.toggleMoves();                  // (held keys stay held: walking and attacks go on)
+            return;
+        }
+        if (sparring && (e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) {
+            endSpar(false);
+            return;
+        }
+        if (sparring && e.code === 'KeyB' && !e.repeat) {
+            Hud.toast(`Practice bot: ${Spar.toggle()}`);
             return;
         }
         if (e.code === 'Escape') {
@@ -990,23 +1196,17 @@
         if (Hud.isSettingsOpen()) {
             if (e.code === 'KeyE')
                 Hud.closeSettings();
-            else if (e.code === 'Enter' && myId === hostId) {
+            else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && myId === hostId) {
                 sendMsg({t: 'console', do: 'start'});
-                Hud.closeSettings();
-            } else if (e.code === 'KeyP' && myId === hostId) {
-                sendMsg({t: 'arcade'});
                 Hud.closeSettings();
             }
             return;
         }
-        if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {
-            if (myId === hostId)
-                sendMsg({t: 'arcade'});
-            else
-                Hud.toast('Only the room host can start the arcade ladder');
+        if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {   // anyone: practice against the bot
+            startSpar();
             return;
         }
-        if (e.code === 'KeyE' && scene === 'match') {     // in a match, E picks up / throws a weapon
+        if (e.code === 'KeyE' && (scene === 'match' || sparring)) {     // in a match, E picks up / throws a weapon
             e.preventDefault();
             if (!e.repeat) {
                 held.set('KeyE', IN.USE);

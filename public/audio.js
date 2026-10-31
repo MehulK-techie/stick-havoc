@@ -113,6 +113,15 @@ const Sfx = (() => {
         zap: () => { tone('sawtooth', 1200, 300, 0.15, 0.25); },
         laser: () => { tone('square', 1800, 400, 0.16, 0.18); },
         bounce: () => tone('sine', 420, 300, 0.06, 0.2),
+        warp: () => { tone('sine', 200, 1600, 0.25, 0.25); noise(0.25, 'bandpass', 600, 6000, 0.2, 2); },
+        claim: () => { for (const [f, d] of [[880, 0], [1175, 0.07], [1568, 0.14]]) tone('triangle', f, f, 0.18, 0.16, d); },
+        kick: () => { tone('sine', 260, 120, 0.1, 0.4); },
+        sizzle: () => { noise(0.5, 'highpass', 3000, 1500, 0.35); tone('sawtooth', 120, 60, 0.3, 0.12); },
+        bassdrop: () => { tone('sine', 120, 32, 0.7, 1.0); tone('sawtooth', 60, 30, 0.5, 0.15); },
+        clash: () => {                         // a parry: two blades meeting, ringing
+            for (const f of [1240, 1870, 2650, 3310]) tone('triangle', f, f * 0.995, 0.6, 0.12);
+            noise(0.05, 'highpass', 5000, 8000, 0.3);
+        },
         hazard: () => { for (const [f, d] of [[300, 0], [450, 0.1], [600, 0.2]]) tone('sawtooth', f, f * 1.5, 0.25, 0.12, d); },
     };
 

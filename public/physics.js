@@ -15,12 +15,15 @@
     const FPS = 60;                       // frame data below is in 60 fps frames
     const fr = n => n / FPS;
     // the wardrobe: (name, colour)
+    // 16 colours, one per player at a time (the server keeps them unique)
     const COLORS = [['Cyan', '#22d3ee'], ['Hot Pink', '#f472b6'], ['Lime', '#a3e635'], ['Electric Gold', '#facc15'],
         ['Violet', '#a78bfa'], ['Emerald', '#34d399'], ['Sunset Orange', '#fb923c'], ['White', '#f1f5f9'],
-        ['Crimson', '#f43f5e'], ['Ice Blue', '#93c5fd']];
+        ['Crimson', '#f43f5e'], ['Ice Blue', '#93c5fd'], ['Magenta', '#e879f9'], ['Teal', '#2dd4bf'],
+        ['Coral', '#fda4af'], ['Mint', '#86efac'], ['Lemon', '#fef08a'], ['Indigo', '#818cf8']];
     const HATS = {bandana: 'Ninja Bandana', visor: 'Cyber Visor', kasa: 'Samurai Kasa', crown: 'Golden Crown',
-        eyepatch: 'Bandit Eyepatch'};
-    const TRAILS = {ghost: 'Ghost Afterimages', sparkle: 'Neon Sparkles', smoke: 'Shadow Smoke'};
+        eyepatch: 'Bandit Eyepatch', chef: 'Chef Hat', cat: 'Cat Ears', beanie: 'Cyber Beanie', viking: 'Viking Horns'};
+    const TRAILS = {ghost: 'Ghost Afterimages', sparkle: 'Neon Sparkles', smoke: 'Shadow Smoke', rainbow: 'Rainbow Prism',
+        pixel: 'Pixel Dust'};
     const C = {
         GRAV: 2300, RUN: 440, ACC_GROUND: 5200, ACC_AIR: 2600, ACC_ICE: 650,
         JUMP: 860, JUMP2: 780, FALL_MAX: 1500, HP: 100,
@@ -29,7 +32,7 @@
     };
     const HAZARDS = {ice: 'Slippery Ice', anvil: 'Anvil Rain', lowgrav: 'Low Gravity', gloves: 'Giant Boxing Gloves'};
     const VOTE_PAIRS = [['ice', 'anvil'], ['lowgrav', 'gloves'], ['ice', 'gloves'], ['anvil', 'lowgrav']];
-    const MODES = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag'};
+    const MODES = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', lava: 'Floor Is Lava'};
     const IN = {LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, LIGHT: 32, HEAVY: 64, DASH: 128, USE: 256, GRAB: 512};
     const PROJECTILES = ['laser', 'grenade', 'thrown'];
 
@@ -41,8 +44,14 @@
         lobby: {
             name: 'Locker Room', pit: false,
             plats: [{x: 0, y: 800, w: W, h: 100, floor: true},
-                {x: 110, y: 560, w: 330, h: 16, oneWay: true}, {x: 1160, y: 560, w: 330, h: 16, oneWay: true}],
-            stations: {wardrobe: {x: 250, y: 800}, console: {x: 800, y: 800}, dummy: {x: 1320, y: 800}},
+                {x: 110, y: 560, w: 330, h: 16, oneWay: true}, {x: 1160, y: 560, w: 330, h: 16, oneWay: true},
+                // the parkour tower, up to the ceiling: start on the first step, the pad at the top stops the clock
+                {x: 1440, y: 450, w: 90, h: 12, oneWay: true, parkour: 'start'}, {x: 1260, y: 350, w: 80, h: 12, oneWay: true},
+                {x: 1440, y: 250, w: 70, h: 12, oneWay: true}, {x: 1270, y: 150, w: 60, h: 12, oneWay: true},
+                {x: 1420, y: 70, w: 110, h: 12, oneWay: true, parkour: 'finish'}],
+            stations: {wardrobe: {x: 250, y: 800}, console: {x: 800, y: 800}, dojo: {x: 1040, y: 800},
+                dummy: {x: 1320, y: 800}},
+            ball: {x: 520, y: 700},
             spawns: [[600, 800], [1000, 800], [500, 800], [1100, 800], [700, 800], [900, 800], [400, 800],
                 [1200, 800], [275, 560], [1325, 560]],
         },
@@ -78,7 +87,23 @@
                 [1270, 820], [205, 560], [1395, 560]],
         },
     };
-    const ARENAS = ['rooftops', 'reactor', 'asteroid', 'colosseum'];
+    MAPS.magma = {
+        name: 'The Magma Foundry', pit: true, lava: {base: 830, amp: 70, period: 9},
+        plats: [{x: 120, y: 620, w: 280, h: 24}, {x: 1200, y: 620, w: 280, h: 24},
+            {x: 520, y: 520, w: 220, h: 18, move: {axis: 'x', from: 470, to: 880, period: 6}},
+            {x: 860, y: 380, w: 220, h: 18, move: {axis: 'y', from: 300, to: 500, period: 5}},
+            {x: 640, y: 240, w: 300, h: 16, oneWay: true}],
+        spawns: [[260, 620], [1340, 620], [630, 520], [970, 380], [790, 240], [180, 620], [1420, 620], [330, 620],
+            [1270, 620], [700, 240], [880, 240], [560, 520], [940, 380], [220, 620], [1380, 620]],
+    };
+    MAPS.skytrain = {
+        name: 'Cyber Sky Train', pit: true, wind: 260, tunnel: {every: 15, warn: 2.5},
+        plats: [{x: 60, y: 720, w: 1480, h: 40, floor: true, train: true},
+            {x: 300, y: 560, w: 200, h: 14, oneWay: true}, {x: 1100, y: 560, w: 200, h: 14, oneWay: true}],
+        spawns: [[400, 720], [1200, 720], [600, 720], [1000, 720], [800, 720], [300, 720], [1300, 720], [500, 720],
+            [1100, 720], [700, 720], [900, 720], [400, 560], [1200, 560], [200, 720], [1400, 720]],
+    };
+    const ARENAS = ['rooftops', 'reactor', 'asteroid', 'colosseum', 'magma', 'skytrain'];
 
     function stage(map) {
         const m = MAPS[map] || MAPS.lobby;
@@ -88,6 +113,8 @@
     function createWorld(map) {
         const m = MAPS[map] || MAPS.lobby;
         return {map, plats: stage(map), fighters: [], anvils: [], time: 0, timeScale: 1, slowmo: 0, slowmoCd: 0,
+            ball: m.ball ? {x: m.ball.x, y: m.ball.y, vx: 0, vy: 0} : null, lavaY: m.lava ? m.lava.base : null,
+            tunnel: m.tunnel ? {next: m.tunnel.every, x: null, hit: []} : null, hotT: 30, hot: 0, airReset: false,
             hitstop: 0, hazard: null, hazardT: 0, anvilT: 0, events: [], noDamage: false,
             weapons: false, crates: [], shots: [], crateT: 8,
             gravity: m.gravity || 1, pit: !!m.pit,
@@ -230,6 +257,8 @@
             callout(w, t, 'COUNTER!');
         } else if (kind === 'uppercut' && !airborne) {
             callout(w, t, 'UPPERCUT!');
+        } else if (kind === 'straight') {
+            callout(w, t, 'CLEAN HIT!');               // the string's finisher, landed
         }
         // the combo: more hits while they're still reeling from the last
         const chained = t.comboBy === a.id && w.time - (t.comboAt || -9) < 0.5;
@@ -267,6 +296,9 @@
         }
         if (shown <= 0)
             return;
+        if (w.airReset && !a.ground && a.jumps !== undefined) {
+            a.jumps = Math.max(a.jumps, 1); a.airDash = true;
+        }
         t.hp = Math.max(0, t.hp - shown);
         if (t.hp <= 0) {
             if (a.hp > 0 && a.hp < C.HP * 0.25)
@@ -310,7 +342,7 @@
     // a bomb or a shockwave: everyone near is thrown away from (x, y)
     function explode(w, x, y, radius, power, skip) {
         for (const f of w.fighters) {
-            if (f === skip || f.st === 'ko' || f.st === 'gone')
+            if (f === skip || f.st === 'ko' || f.st === 'gone' || f.ghost)
                 continue;
             const dx = f.x - x, dy = f.y - 50 - y, d = Math.hypot(dx, dy);
             if (d > radius)
@@ -356,6 +388,10 @@
         for (const f of live)
             move(w, f, dt);
         platforms(w, live, dt);
+        movers(w, live, dt);
+        ball(w, live, dt);
+        lava(w, live, dt);
+        train(w, live, dt);
         beam(w, live, dt);
         anvils(w, live, dt);
         crates(w, live, dt);
@@ -414,7 +450,9 @@
             f.vx *= Math.pow(0.0001, dt);
         } else if (f.dashT <= 0 && !aerial) {
             const busy = f.atk ? 0.3 : 1;
-            const target = dir * C.RUN * busy;
+            // the sky train's slipstream: in the air you drift backwards
+            const wind = !f.ground && MAPS[w.map] && MAPS[w.map].wind ? MAPS[w.map].wind : 0;
+            const target = dir * C.RUN * busy - wind;
             const acc = f.ground ? (w.hazard === 'ice' ? C.ACC_ICE : C.ACC_GROUND) : C.ACC_AIR;
             f.vx += Math.max(-acc * dt, Math.min(acc * dt, target - f.vx));
             if (dir && !f.atk)
@@ -547,7 +585,7 @@
         a.t += dt;
         const m = a.move;
         if (a.kind === 'grab' && a.t >= m.from && a.t <= m.to && !a.hit.length) {
-            const t = live.find(o => o !== f && o.st !== 'ko' && o.ground && o.inv <= 0 && o.shield <= 0 &&
+            const t = live.find(o => o !== f && o.st !== 'ko' && o.ground && o.inv <= 0 && o.shield <= 0 && !o.ghost &&
                 Math.abs(o.x - f.x) < 62 && Math.abs(o.y - f.y) < 40 && (o.x - f.x) * f.face > -10);
             if (t) {
                 a.hit.push(t.id);
@@ -570,7 +608,7 @@
                 cy = f.y - 58 + a.dir.y / len * m.reach * (big > 1 ? 1.3 : 1);
             }
             for (const t of live) {
-                if (t === f || a.hit.includes(t.id) || t.st === 'ko' || t.inv > 0 || t.shield > 0)
+                if (t === f || a.hit.includes(t.id) || t.st === 'ko' || t.inv > 0 || t.shield > 0 || t.ghost)
                     continue;
                 if (circleHits(cx, cy, m.r * big, hurt(t))) {
                     a.hit.push(t.id);
@@ -688,6 +726,15 @@
                 }
             }
         }
+        if (f.ground && !wasGround && f.plat && f.plat.parkour) {
+            if (f.plat.parkour === 'start')
+                f.climbStart = w.time;
+            else if (f.climbStart !== undefined) {
+                w.events.push({type: 'climb', id: f.id, x: Math.round(f.x), y: Math.round(f.y),
+                    t: Math.round((w.time - f.climbStart) * 10) / 10});
+                f.climbStart = undefined;
+            }
+        }
         if (f.ground && !wasGround) {
             f.jumps = 2; f.airDash = true; f.juggle = 0;
             if (f.atk && f.atk.kind === 'dive')
@@ -765,6 +812,153 @@
             } else {
                 p.load = Math.max(0, p.load - dt * 0.5);
             }
+        }
+    }
+
+    // moving platforms (the foundry's hover plates): whoever stands on one rides along
+    function movers(w, live, dt) {
+        for (const p of w.plats) {
+            if (!p.move)
+                continue;
+            const m = p.move, k = (Math.sin(w.time * 2 * Math.PI / m.period) + 1) / 2;
+            const v = m.from + (m.to - m.from) * k, d = v - p[m.axis];
+            p[m.axis] = v;
+            for (const f of live) {
+                if (f.ground && f.plat === p)
+                    f[m.axis === 'x' ? 'x' : 'y'] += d;
+            }
+        }
+    }
+
+    // the lobby's ball: bounces, rolls, flies off punches and kicks, pushed by bodies
+    function ball(w, live, dt) {
+        const b = w.ball;
+        if (!b)
+            return;
+        b.vy += C.GRAV * 0.7 * dt;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        const R = 18;
+        if (b.x < R || b.x > W - R) {
+            b.x = b.x < R ? R : W - R; b.vx = -b.vx * 0.8;
+        }
+        if (b.y < R) {
+            b.y = R; b.vy = Math.abs(b.vy) * 0.6;
+        }
+        for (const p of w.plats) {
+            if (p.alive && b.vy > 0 && b.x > p.x && b.x < p.x + p.w && b.y + R >= p.y && b.y + R - b.vy * dt <= p.y + 4) {
+                b.y = p.y - R; b.vy = -b.vy * 0.72; b.vx *= 0.97;
+                if (Math.abs(b.vy) < 60)
+                    b.vy = 0;
+            }
+        }
+        if (Math.abs(b.vy) < 1)
+            b.vx *= Math.pow(0.4, dt);                // rolling to a stop
+        for (const f of live) {
+            if (f.ghost || f.dummy || f.st === 'ko')
+                continue;
+            const box = hurt(f);
+            const strike = f.atk && f.atk.t >= f.atk.move.from && f.atk.t <= f.atk.move.to &&
+                Math.hypot(b.x - (f.x + f.face * 50), b.y - (f.y - 50)) < 40 + R;
+            if (strike || circleHits(b.x, b.y, R, box)) {
+                const dir = b.x < f.x ? -1 : 1;
+                if (strike) {                          // a punch or a kick sends it flying
+                    const d = f.atk.dir || {x: f.face, y: -0.3};
+                    b.vx = (d.x || f.face) * 1100; b.vy = Math.min(-420, (d.y || 0) * 900 - 380);
+                    w.events.push({type: 'kick', x: Math.round(b.x), y: Math.round(b.y)});
+                } else {                               // a dash, or just walking into it
+                    b.vx = dir * Math.max(Math.abs(f.vx) * (f.dashT > 0 ? 1.4 : 1.1), 180);
+                    if (b.vy >= 0)
+                        b.vy = -Math.max(120, Math.abs(f.vx) * 0.3);
+                }
+                if (circleHits(b.x, b.y, R, box))       // (out of the body it's touching)
+                    b.x = dir < 0 ? box.x0 - R - 1 : box.x1 + R + 1;
+            }
+        }
+    }
+
+    // lava: the foundry's rises and falls; in Floor Is Lava the platforms
+    // themselves turn hot every 30 s. Touch it and you're launched upwards.
+    function burn(w, f, why) {
+        f.vy = -1250; f.ground = false; f.st = 'tumble'; f.spinV = 10 * (Math.random() < 0.5 ? -1 : 1); f.stun = 0.45;
+        f.atk = null; f.inv = Math.max(f.inv, 0.5);
+        w.events.push({type: 'lava', x: Math.round(f.x), y: Math.round(f.y), why});
+        if (!w.noDamage) {
+            f.hp = Math.max(0, f.hp - 12);
+            if (f.hp <= 0)
+                knockOut(w, f, null);
+        }
+    }
+
+    function lava(w, live, dt) {
+        const m = MAPS[w.map];
+        if (m && m.lava) {
+            w.lavaY = m.lava.base - m.lava.amp * (Math.sin(w.time * 2 * Math.PI / m.lava.period) + 1) / 2;
+            for (const f of live) {
+                if (f.st !== 'ko' && f.inv <= 0 && f.y > w.lavaY)
+                    burn(w, f, 'pool');
+            }
+        }
+        if (w.floorLava) {                             // Floor Is Lava: 3 s warning, 8 s hot
+            w.hotT -= dt;
+            if (w.hot > 0) {
+                w.hot -= dt;
+                for (const f of live) {
+                    if (f.ground && f.st !== 'ko' && f.inv <= 0)
+                        burn(w, f, 'floor');
+                }
+                if (w.hot <= 0) {
+                    w.hotT = 30;
+                    w.events.push({type: 'cool'});
+                }
+            } else if (w.hotT <= 0) {
+                w.hot = 8;
+                w.events.push({type: 'hot'});
+            } else if (w.hotT <= 3 && !w.warned) {
+                w.warned = true;
+                w.events.push({type: 'hotWarn'});
+            }
+            if (w.hot > 0)
+                w.warned = false;
+        }
+    }
+
+    // the sky train: a tunnel's mouth sweeps along the roof at head height; duck (guard) under it
+    function train(w, live, dt) {
+        const t = w.tunnel, cfg = MAPS[w.map] && MAPS[w.map].tunnel;
+        if (!t || !cfg)
+            return;
+        if (t.x === null) {
+            t.next -= dt;
+            if (t.next <= cfg.warn && !t.warned) {
+                t.warned = true;
+                w.events.push({type: 'tunnelWarn'});
+            }
+            if (t.next <= 0) {
+                t.x = W + 60; t.hit = []; t.warned = false;
+            }
+            return;
+        }
+        t.x -= 1500 * dt;
+        const roof = w.plats[0].y;
+        for (const f of live) {
+            if (f.st === 'ko' || t.hit.includes(f.id) || f.inv > 0 || f.shield > 0 || f.ghost || Math.abs(f.x - t.x) > 30)
+                continue;
+            const ducked = f.st === 'block' || f.st === 'ledge';
+            if (!ducked && f.y > roof - 140 && f.y <= roof + 2) {
+                t.hit.push(f.id);
+                f.vx = -900; f.vy = -420; f.ground = false; f.st = 'tumble'; f.spinV = -12; f.stun = 0.5; f.atk = null;
+                w.events.push({type: 'hit', x: Math.round(f.x), y: Math.round(f.y - 60), kind: 'tunnel', power: 15,
+                    heavy: true, color: '#facc15', by: null, on: f.id, dx: -1, dy: -0.4});
+                if (!w.noDamage) {
+                    f.hp = Math.max(0, f.hp - 15);
+                    if (f.hp <= 0)
+                        knockOut(w, f, null);
+                }
+            }
+        }
+        if (t.x < -60) {
+            t.x = null; t.next = cfg.every;
         }
     }
 
@@ -863,7 +1057,7 @@
             s.life -= dt;
             const owner = w.fighters.find(f => f.id === s.owner);
             // whoever it touches (not its thrower)
-            const hit = live.find(f => f.id !== s.owner && f.st !== 'ko' && f.inv <= 0 && f.shield <= 0 &&
+            const hit = live.find(f => f.id !== s.owner && f.st !== 'ko' && f.inv <= 0 && f.shield <= 0 && !f.ghost &&
                 circleHits(s.x, s.y, s.kind === 'grenade' ? 12 : 16, hurt(f)));
             if (s.kind === 'grenade') {
                 if (s.x < 20 || s.x > W - 20)
@@ -1121,6 +1315,35 @@
             ctx.moveTo(-10, -10); ctx.lineTo(-10, -22); ctx.lineTo(-5, -15); ctx.lineTo(0, -24); ctx.lineTo(5, -15);
             ctx.lineTo(10, -22); ctx.lineTo(10, -10); ctx.closePath();
             ctx.fill();
+            break;
+        case 'chef':                                  // a tall white toque
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(-10, -16, 20, 6);
+            ctx.beginPath(); ctx.arc(-6, -22, 7, 0, Math.PI * 2); ctx.arc(6, -22, 7, 0, Math.PI * 2);
+            ctx.arc(0, -27, 8, 0, Math.PI * 2); ctx.fill();
+            break;
+        case 'cat':
+            ctx.fillStyle = color;
+            for (const sx of [-1, 1]) {
+                ctx.beginPath(); ctx.moveTo(sx * 4, -10); ctx.lineTo(sx * 10, -22); ctx.lineTo(sx * 12, -7); ctx.closePath();
+                ctx.fill();
+            }
+            break;
+        case 'beanie':
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath(); ctx.arc(0, -3, 12.5, Math.PI, 0); ctx.fill();
+            ctx.fillStyle = color;
+            ctx.fillRect(-12.5, -5, 25, 3);
+            ctx.beginPath(); ctx.arc(0, -16, 3, 0, Math.PI * 2); ctx.fill();
+            break;
+        case 'viking':
+            ctx.fillStyle = '#94a3b8';
+            ctx.beginPath(); ctx.arc(0, -3, 12.5, Math.PI, 0); ctx.fill();
+            ctx.fillStyle = '#f1f5f9';
+            for (const sx of [-1, 1]) {
+                ctx.beginPath(); ctx.moveTo(sx * 10, -8); ctx.quadraticCurveTo(sx * 22, -12, sx * 20, -28);
+                ctx.quadraticCurveTo(sx * 16, -14, sx * 6, -12); ctx.closePath(); ctx.fill();
+            }
             break;
         case 'eyepatch':
             ctx.strokeStyle = '#0f172a';

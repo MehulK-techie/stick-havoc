@@ -58,6 +58,8 @@ const Lobby = (() => {
         wardrobe(ctx, t);
         console_(ctx, t);
         dummyPost(ctx);
+        dojo(ctx, t);
+        parkour(ctx);
     }
 
     function wardrobe(ctx, t) {
@@ -172,6 +174,31 @@ const Lobby = (() => {
         label(ctx, 'TRAINING DUMMY', x, y - 150);
     }
 
+    // the dojo mat: practise against the bot
+    function dojo(ctx, t) {
+        const {x, y} = ST.dojo;
+        ctx.fillStyle = 'rgba(34, 211, 238, 0.10)';
+        rounded(ctx, x - 70, y - 6, 140, 6, 3);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(34, 211, 238, ${0.35 + 0.15 * Math.sin(t * 2)})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(x, y - 3, 66, 7, 0, 0, Math.PI * 2); ctx.stroke();
+        label(ctx, 'DOJO · PRACTICE BOT', x, y - 150);
+    }
+
+    // the parkour tower: where the clock starts and stops
+    function parkour(ctx) {
+        for (const p of MAPS.lobby.plats) {
+            if (!p.parkour)
+                continue;
+            ctx.fillStyle = p.parkour === 'finish' ? 'rgba(250, 204, 21, 0.85)' : 'rgba(34, 211, 238, 0.85)';
+            ctx.fillRect(p.x, p.y - 3, p.w, 3);
+            ctx.textAlign = 'center';
+            ctx.font = '700 10px system-ui, sans-serif';
+            ctx.fillText(p.parkour === 'finish' ? 'FINISH' : 'START ▲ CLIMB', p.x + p.w / 2, p.y - 10);
+        }
+    }
+
     function label(ctx, text, x, y) {
         ctx.textAlign = 'center';
         ctx.font = '700 12px system-ui, sans-serif';
@@ -184,11 +211,11 @@ const Lobby = (() => {
         if (me && state.near) {
             const s = ST[state.near];
             const isHost = myId === hostId;
-            const text = state.near === 'wardrobe' ? 'E  Customize' :
-                isHost ? 'E  Match settings     P  1P Arcade' : 'E  View rules  ·  Waiting for Host to start...';
+            const text = state.near === 'wardrobe' ? 'E  Customize' : state.near === 'dojo' ? 'E  Spar the practice bot' :
+                isHost ? 'E  Match settings     Enter  Start' : 'E  View rules  ·  Waiting for Host to start...';
             ctx.font = '700 15px system-ui, sans-serif';
             const w = ctx.measureText(text).width + 28;
-            const y = s.y - (state.near === 'console' ? 120 : 250);
+            const y = s.y - (state.near === 'wardrobe' ? 250 : 120);
             ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
             rounded(ctx, s.x - w / 2, y - 22, w, 34, 9);
             ctx.fill();
@@ -210,6 +237,21 @@ const Lobby = (() => {
             ctx.globalAlpha = Math.max(0, 1 - k * k);
             ctx.translate(p.x + p.dx * p.t, p.y - 70 * p.t);
             ctx.rotate(p.rot);
+            if (p.big && p.t < 0.22) {                // a comic burst: rays flying out from the hit
+                const k = p.t / 0.22;
+                ctx.strokeStyle = p.color || '#facc15';
+                ctx.globalAlpha = 1 - k;
+                ctx.lineWidth = 3;
+                for (let i = 0; i < 10; i++) {
+                    const a = i * Math.PI / 5 + p.rot;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(a) * (18 + 50 * k), Math.sin(a) * (10 + 30 * k) - 10);
+                    ctx.lineTo(Math.cos(a) * (34 + 90 * k), Math.sin(a) * (18 + 52 * k) - 10);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = Math.max(0, 1 - (p.t / 1.1) ** 2);
+                ctx.scale(0.7 + 0.3 * Math.min(1, k * 2), 0.7 + 0.3 * Math.min(1, k * 2));
+            }
             ctx.textAlign = 'center';
             ctx.font = `800 italic ${p.big ? 34 : 22}px system-ui, sans-serif`;
             ctx.lineWidth = 5;

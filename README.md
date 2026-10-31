@@ -3,7 +3,7 @@
 **Created by Mehul** · [github.com/MehulK-techie/stick-havoc](https://github.com/MehulK-techie/stick-havoc) ·
 v1.2.0-tournament · MIT License
 
-An offline LAN stick-figure brawler for 2 to 10 players. One computer hosts;
+An offline LAN stick-figure brawler for 2 to 15 players. One computer hosts;
 everyone else plays in a browser (Chrome, Firefox, Safari, Edge; Windows,
 macOS, Linux, Android, iOS). No internet, no installs on the players' side.
 
@@ -30,23 +30,41 @@ blocking the port: on Fedora, `sudo firewall-cmd --add-port=3000/tcp`.
 You arrive in a locker room you can walk around in, with everyone else who
 has joined (their names over their heads). Three stations:
 
-- **Wardrobe** (left): stand at it and press `E`. Name, ten colours,
-  headgear (Ninja Bandana with trailing ribbons, Cyber Visor, Samurai Kasa,
-  Golden Crown, Bandit Eyepatch) and a dash trail (ghost afterimages, neon
-  sparkles, shadow smoke). Everyone sees the change at once; your look is
-  remembered on that device.
+- **Wardrobe** (left): stand at it and press `E`. While the drawer is open
+  you're a see-through ghost: nobody can hit, grab or push you, and any
+  number of people can customize at once. Name; sixteen colours, one per
+  player, like Among Us (a colour someone wears is locked, with their
+  initial on it; change or leave and it's free again); headgear (Ninja
+  Bandana with trailing ribbons, Cyber Visor, Samurai Kasa, Golden Crown,
+  Bandit Eyepatch, Chef Hat, Cat Ears, Cyber Beanie, Viking Horns) and a
+  dash trail (ghost afterimages, neon sparkles, shadow smoke, rainbow prism,
+  pixel dust). Everyone sees the change at once; your look is remembered on
+  that device.
+- **Dojo** (right of the console), or `P` anywhere in the lobby: spar the
+  practice bot, alone, in your own browser (nothing anyone else does is
+  affected; to the room you're a ghost meanwhile). It guards your strings
+  and rolls away before its guard breaks, jumps grabs and projectiles, and
+  strings J, J, uppercut into a dive spike. `B` switches Medium / Hard
+  (Hard reacts in about 60 ms and parries). `Esc` or `P` stops. When the
+  host starts a match, sparring ends at once and you're in.
+- **The ball**: punch it, kick it, dash into it: lobby football.
+- **Parkour tower** (top right): start on the lit step and climb to the
+  finish pad at the ceiling: `CLIMB TIME: X.Xs`.
 - **Host console** (middle): the stadium screen high on the wall shows the
-  room's settings, `PLAYERS READY` and the join QR. The room host (a lit
+  room's settings, `PLAYERS READY` (up to 15) and the join QR. The room host (a lit
   `👑 ROOM HOST` badge and a gold ring at their feet; the first to join, and
   if they leave the next one, with a notice to everyone) presses `E` here for
-  the **match settings**: game mode (King of the Hill, Royal Rumble, Bomb Tag
-  or Random), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
-  weapons on or off, a player limit (2-10) and the map (or Random). Changes
+  the **match settings**: game mode (King of the Hill, Royal Rumble, Bomb Tag,
+  Floor Is Lava, Random, or **Banger Shuffle**: weighted picks that never
+  repeat the last mode or map, nor a mode-and-map pair from the last 3
+  matches), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
+  weapons on or off, a player limit (2-15) and the map (or Random, or
+  Banger Shuffle). Changes
   show on everyone's screen at once; anyone else at the console sees them
   read-only ("Waiting for Host to start..."). `Enter` starts: 3, 2, 1, and
   everyone is on the stage. (`Q` / `Tab` cycle mode and map without the
   drawer.)
-- **1P Arcade** (`P`, the host): a ladder of five computer opponents, one
+- **1P Arcade** (the settings drawer's button, the host): a ladder of five computer opponents, one
   round each, on the four arenas in turn: Rookie Stick (slow, basic),
   Acrobat (jumps and dive kicks), Brawler (relentless strings, dash
   cancels), Ninja (guards and parries, wall kicks, picks up weapons) and the
@@ -71,7 +89,8 @@ has joined (their names over their heads). Three stations:
 | Guard (hold; just in time: parry) | `S` or `↓` | joystick down |
 | Grab & throw (goes through a guard) | `G` | G |
 | Use a station · pick up / throw a weapon | `E` | E |
-| Move list | `H` (or ? Moves) | ? Moves |
+| Move list | `Shift` (or ? Moves) | ? (top right) |
+| Practice bot (lobby) · its difficulty | `P` · `B` | |
 | Punch where you point | left click | |
 | Emojis 🔥 💀 🤡 🚀 · vote | `5`–`8` · `1` `2` | the buttons |
 
@@ -115,7 +134,8 @@ nearest opponent close by, as in Tekken.
 | Mode | |
 |---|---|
 | **King of the Hill** | Two fight, the rest queue (and vote on hazards, and send emojis). The loser goes to the back; the next comes in with a 2.5 s shield. First to 5 wins takes the match. Alone, you spar with a training bot. |
-| **Royal Rumble** | Everyone at once; last one standing wins the round; first to 3 rounds wins. |
+| **Royal Rumble** | Everyone at once; last one standing wins the round. |
+| **Floor Is Lava** | Everyone at once; every 30 s (3 s warning) every platform glows hot for 8 s: touch it and you're thrown up and burned. Stay up: double jumps, wall kicks, and landing a hit in the air gives your jump and air dash back. |
 | **Bomb Tag** | One player carries a ticking bomb (20 s). Punch someone to pass it on. At zero it explodes: the carrier is out and everyone near is blown away. A new bomb goes to a survivor, until one is left. No health in this mode, only the bomb and the pit. |
 
 | Map | |
@@ -123,6 +143,8 @@ nearest opponent close by, as in Tekken.
 | **Neon Rooftops** | Three rooftops over a drop. The middle bridge gives way after 4 s stood on, and comes back after 8. |
 | **The Reactor Core** | Tiers above a floor that a beam sweeps every 18 s: three beeps and red stripes first. Get off the floor. |
 | **Low-Gravity Asteroid** | 0.55x gravity, big floaty jumps, bumpers on both edges that fling you back across. A drop below. |
+| **The Magma Foundry** | Two hover plates (one sliding, one rising and falling) over a pool of lava that rises and sinks; touch it and it throws you up, burning. |
+| **Cyber Sky Train** | The roof of a speeding train: in the air the slipstream drags you backwards, and every 15 s (a flashing signal first) a tunnel mouth sweeps the roof at head height: guard (duck) under it or be knocked off. |
 | **The Colosseum** | Flat and fair, with a stone pillar each side to bounce people off. Each pillar breaks after three bounces (and is rebuilt after 14 s). |
 
 In King of the Hill and Royal Rumble the crowd votes every 45 s on a hazard

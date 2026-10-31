@@ -21,7 +21,7 @@ const VERSION = require('./package.json').version;
 
 const PORT = Number(process.env.PORT) || 3000;
 const TPS = 30;
-const MAX_PLAYERS = 10;
+const MAX_PLAYERS = 15;
 const VOTE_EVERY = Number(process.env.VOTE_EVERY) || 45, VOTE_FOR = 5, HAZARD_FOR = 15;   // seconds
 const BOMB_FUSE = Number(process.env.BOMB_FUSE) || 20;
 const EMOJIS = ['🔥', '💀', '🤡', '🚀'];
@@ -71,8 +71,12 @@ let nextId = 1;
 const players = new Map();      // id -> {id, ws, name, color, gear, wins, joined, input, bot}
 // the room's settings: the host changes them at the console
 const sel = {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: MAX_PLAYERS};
-const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'random'], map: [...P.ARENAS, 'random'], target: [3, 5, 7],
-    timer: [45, 60, 90, 0], weapons: [true, false], limit: [2, 3, 4, 5, 6, 7, 8, 9, 10]};
+const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'lava', 'random', 'shuffle'], map: [...P.ARENAS, 'random', 'shuffle'],
+    target: [3, 5, 7], timer: [45, 60, 90, 0], weapons: [true, false],
+    limit: Array.from({length: MAX_PLAYERS - 1}, (_, i) => i + 2)};
+// Banger Shuffle: weighted picks; never the same mode or map twice running, no pair from the last 3 matches
+const SHUFFLE_WEIGHTS = {koth: 3, rumble: 3, bomb: 2, lava: 2};
+const history = [];                   // [{mode, map}], newest last
 let lastHost = null;
 let scene = 'lobby';            // lobby | match
 let lobby = newLobby();
@@ -114,6 +118,7 @@ function broadcast(msg) {
 function roster() {
     broadcast({type: 'roster', host: hostId(),
         list: [...players.values()].map(p => ({id: p.id, name: p.name, color: p.color, gear: p.gear,
+            ghost: !!p.ghost, spar: !!p.spar,
             wins: match ? (match.roundWins.get(p.id) || 0) : 0, bot: !!p.bot}))});
 }
 
@@ -121,8 +126,9 @@ function roster() {
 function lobbySpawn(p) {
     const spots = P.MAPS.lobby.spawns;
     const [x, y] = spots[(p.id - 1) % spots.length];
-    const f = P.makeFighter(p.id, p.name, p.color, x, y - 40, p.gear);
+    const f = P.makeFighter(p.id, p.name, p.color, x + (p.id % 3) * 20, y - 40, p.gear);
     f.shield = 0;
+    f.ghost = !!(p.ghost || p.spar);
     lobby.fighters.push(f);
 }
 
@@ -151,10 +157,38 @@ function ensureBot() {
 // ---------------------------------------------------------------- matches
 const pick = list => list[Math.floor(Math.random() * list.length)];
 
+function weighted(weights) {
+    const total = Object.values(weights).reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (const [k, v] of Object.entries(weights)) {
+        if ((r -= v) < 0)
+            return k;
+    }
+    return Object.keys(weights)[0];
+}
+
+function bangerShuffle() {
+    const last = history[history.length - 1] || {};
+    const recent = history.slice(-3).map(h => `${h.mode}/${h.map}`);
+    for (let tries = 0; tries < 50; tries++) {
+        const w = Object.fromEntries(Object.entries(SHUFFLE_WEIGHTS).filter(([k]) => k !== last.mode));
+        const mode = sel.mode === 'shuffle' ? weighted(w) : null;
+        const maps = P.ARENAS.filter(m => m !== last.map);
+        const map = sel.map === 'shuffle' ? pick(maps) : null;
+        if (!recent.includes(`${mode}/${map}`))
+            return {mode, map};
+    }
+    return {mode: weighted(SHUFFLE_WEIGHTS), map: pick(P.ARENAS)};
+}
+
 function startMatch() {
     const ids = humans().map(p => p.id);
-    const mode = sel.mode === 'random' ? pick(['koth', 'rumble', 'bomb']) : sel.mode;
-    const map = sel.map === 'random' ? pick(P.ARENAS) : sel.map;
+    const shuffled = bangerShuffle();
+    const mode = sel.mode === 'random' ? pick(Object.keys(P.MODES)) : sel.mode === 'shuffle' ? shuffled.mode : sel.mode;
+    const map = sel.map === 'random' ? pick(P.ARENAS) : sel.map === 'shuffle' ? shuffled.map : sel.map;
+    history.push({mode, map});
+    if (history.length > 3)
+        history.shift();
     match = {mode, map, world: null, phase: 'countdown', phaseT: 0, queue: [], active: [], target: sel.target,
         timeLimit: sel.timer, clock: 0, weapons: sel.weapons,
         roundWins: new Map(), bomb: null, voteClock: 0, vote: null, round: 0, winner: null, champion: null};
@@ -171,6 +205,7 @@ function startRound() {
     const keep = m.world && m.world.hazard ? {hazard: m.world.hazard, hazardT: m.world.hazardT} : {};
     m.world = Object.assign(P.createWorld(m.map), keep);
     m.world.noDamage = m.mode === 'bomb';
+    m.world.floorLava = m.world.airReset = m.mode === 'lava';
     m.world.weapons = m.weapons || (m.mode === 'arcade' && m.arcade.stage >= 3);
     m.round++;
     m.clock = 0;
@@ -192,7 +227,8 @@ function startRound() {
     m.active.forEach((id, i) => {
         const p = players.get(id);
         const [x, y] = spots[i % spots.length];
-        m.world.fighters.push(P.makeFighter(id, p.name, p.color, x, y, p.gear));
+        const nudge = Math.floor(i / spots.length) * 36 * (i % 2 ? 1 : -1);
+        m.world.fighters.push(P.makeFighter(id, p.name, p.color, x + nudge, y, p.gear));
     });
     if (m.mode === 'bomb')
         m.bomb = null;
@@ -213,6 +249,9 @@ function endRound(forced) {
         return arcadeRoundEnd();
     if (m.winner)
         m.roundWins.set(m.winner, (m.roundWins.get(m.winner) || 0) + 1);
+    const champ = m.world.fighters.find(f => f.id === m.winner);
+    if (champ && champ.hp >= P.C.HP && m.mode !== 'bomb')      // not a scratch on them
+        pendingEvents.push({type: 'callout', x: Math.round(champ.x), y: Math.round(champ.y - 130), text: 'PERFECT!'});
     if (m.mode === 'koth') {   // the loser goes to the back of the line; the winner stays
         const losers = m.active.filter(id => id !== m.winner);
         m.active = m.active.filter(id => id === m.winner);
@@ -273,10 +312,12 @@ function backToLobby() {
     match = null;
     lobby = newLobby();
     for (const p of players.values()) {
-        if (p.bot)
+        if (p.bot) {
             players.delete(p.id);
-        else
+        } else {
+            p.near = undefined;           // (so they're told afresh which station they're at)
             lobbySpawn(p);
+        }
     }
     pendingEvents.push({type: 'lobby'});
     roster();
@@ -471,12 +512,17 @@ function snapshot() {
         bomb: bomb ? {id: bomb.id, t: r1(bomb.t)} : null,
         beam: w.beam ? {ph: w.beam.phase, x: Math.round(w.beam.x), n: r1(w.beam.next)} : null,
         pl: w.plats.map(p => [p.alive ? 1 : 0, p.breaking > 0 ? 1 : 0, p.load > 0 ? r1(p.load / (p.crumbleAfter || 1.6)) : 0,
-            p.solid ? p.hp : 0]),
+            p.solid ? p.hp : 0, Math.round(p.x), Math.round(p.y)]),
+        ball: w.ball ? [Math.round(w.ball.x), Math.round(w.ball.y)] : null,
+        lavaY: w.lavaY !== null ? Math.round(w.lavaY) : null,
+        tunnel: w.tunnel ? {x: w.tunnel.x === null ? null : Math.round(w.tunnel.x), warn: !!w.tunnel.warned} : null,
+        heat: w.floorLava ? {hot: r1(w.hot), next: r1(w.hotT)} : null,
         f: w.fighters.filter(f => f.st !== 'gone').map(f => [
             f.id, Math.round(f.x), Math.round(f.y), Math.round(f.vx), Math.round(f.vy), f.face, Math.ceil(f.hp), f.st,
             f.atk ? f.atk.kind : 0, f.atk ? r1(f.atk.t / f.atk.move.dur) : 0, f.combo,
             f.inv > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, r1(f.spin), f.ground ? 1 : 0,
-            f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0]),
+            f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0,
+            f.ghost ? 1 : 0]),
         cr: w.crates.map(c => [Math.round(c.x), Math.round(c.y), c.kind, c.landed ? 1 : 0]),
         sh: w.shots.map(s => [Math.round(s.x), Math.round(s.y), s.kind, Math.round(s.vx)]),
         tl: m && m.timeLimit ? Math.max(0, Math.ceil(m.timeLimit - m.clock)) : null,
@@ -515,9 +561,19 @@ function removePlayer(id) {
     roster();
 }
 
+// a colour belongs to one player at a time: freed when they change or leave
+const colorOwner = color => [...players.values()].find(p => p.color === color && !p.bot);
+
 function applyLook(p, m) {
-    if (COLOR_VALUES.includes(m.color))
-        p.color = m.color;
+    if (COLOR_VALUES.includes(m.color) && m.color !== p.color) {
+        const owner = colorOwner(m.color);
+        if (owner && owner !== p) {
+            send(p.ws, {type: 'colorTaken', color: m.color, by: owner.name});
+        } else {
+            p.color = m.color;
+            pendingEvents.push({type: 'colorClaimed', id: p.id, color: m.color});
+        }
+    }
     const name = clean(m.name);
     if (name)
         p.name = name;
@@ -541,7 +597,7 @@ wss.on('connection', ws => {
     }
     // you arrive in the lobby at once, as "Player N" in a free colour
     const id = nextId++;
-    const used = new Set([...players.values()].map(p => p.color));
+    const used = new Set(humans().map(p => p.color));
     const color = COLOR_VALUES.find(c => !used.has(c)) || COLOR_VALUES[id % COLOR_VALUES.length];
     const me = {id, ws, name: `Player ${id}`, color, gear: {hat: 'bandana', trail: 'ghost'}, joined: Date.now(),
         input: {k: 0, aim: null}};
@@ -581,6 +637,13 @@ wss.on('connection', ws => {
             me.input.aim = typeof m.aim === 'number' && isFinite(m.aim) ? m.aim : null;
         } else if (m.t === 'look') {
             applyLook(me, m);
+        } else if (m.t === 'ghost' || m.t === 'spar') {
+            // in the wardrobe, or sparring the practice bot (in their own browser): untouchable in the lobby
+            me[m.t] = !!m.on;
+            const f = lobby.fighters.find(o => o.id === id);
+            if (f)
+                f.ghost = !!(me.ghost || me.spar);
+            roster();
         } else if (m.t === 'emoji' && EMOJIS.includes(m.e)) {
             if (now - (me.lastEmoji || 0) > 250) {
                 me.lastEmoji = now;

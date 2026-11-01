@@ -217,8 +217,16 @@ nearest opponent close by, as in Tekken.
   the one pressed first): a 100 ms freeze, a gold starburst and a deep
   stinger, and the loser flies backwards into the K.O. at full speed. If
   neither lands within 1.6 s, the moment passes.
-- **The knockout**, in order and never on top of each other: a 120 ms
-  freeze with sparks, a second at 0.25x while the loser crumples (one
+- **The knockout.** Only the K.O. that decides it gets the cinematic: the
+  last one standing (or the last team), and in a match only the blow that
+  wins it (in the arcade, every stage's). Any other K.O. (one of several
+  in a Royal Rumble, or a round that doesn't settle the match) is a 50 ms
+  freeze for the two fighters involved, a burst and a floating `K.O.`,
+  and everyone else fights on at full speed. With more than two fighters
+  on the stage, ordinary hit-stop is local the same way, so nobody's fight
+  stutters for someone else's. The deciding K.O., in order and never on
+  top of each other: a 120 ms freeze with sparks, 1.2 s at 0.2x while the
+  loser crumples (one
   bounce, dust, then lying still), letterbox bars slide in and the HUD
   steps aside, `K.O.!` springs onto the screen, then the round's result.
   When it ends the match: the **winner's card**, their figure in a victory

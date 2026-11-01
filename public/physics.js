@@ -184,6 +184,17 @@
         return m ? m.dmg : 8;
     }
 
+    // a hit's freeze: one-on-one the whole stage holds still; in a crowd only the two involved do,
+    // so nobody else's fight stutters (fs: the fighters in it; a projectile's stand-in has no id and is skipped)
+    function hitStop(w, fs, secs) {
+        if (w.fighters.filter(f => !f.dummy && f.st !== 'ko' && f.st !== 'gone').length <= 2)
+            w.hitstop = Math.max(w.hitstop, secs);
+        else
+            for (const f of fs)
+                if (f && f.id !== undefined)
+                    f.freeze = Math.max(f.freeze || 0, secs);
+    }
+
     // a: the attacker (for a projectile, a stand-in at the projectile); t: who's hit
     function applyHit(w, a, t, kind) {
         const gloves = w.hazard === 'gloves' ? 1.35 : 1;
@@ -194,7 +205,7 @@
         if (t.blocking && t.face === (a.x > t.x ? 1 : -1)) {
             if (t.blockT < 0.15 && !ranged && a.atk !== undefined) {
                 a.stun = 0.45; a.st = 'hurt'; a.atk = null; a.vx = -a.face * 220;
-                w.hitstop = Math.max(w.hitstop, 0.06);
+                hitStop(w, [a, t], 0.06);
                 callout(w, t, 'PARRY!');
                 w.events.push({type: 'parry', x: Math.round(t.x), y: Math.round(t.y - 60), by: t.id});
                 return;
@@ -206,7 +217,7 @@
             t.guardT = 1.2;
             if (t.guardHits >= 3) {                    // three in a row: the guard breaks
                 t.blocking = false; t.guardHits = 0; t.st = 'hurt'; t.stun = 0.9; t.vx = a.face * 260;
-                w.hitstop = Math.max(w.hitstop, 0.07);
+                hitStop(w, [a, t], 0.07);
                 callout(w, t, 'GUARD BREAK!');
                 w.events.push({type: 'guardbreak', x: Math.round(t.x), y: Math.round(t.y - 60)});
             } else {
@@ -310,7 +321,7 @@
         else
             t.spin = 0;
         const heavy = !['jab', 'hook', 'katana', 'laser'].includes(kind);
-        w.hitstop = Math.max(w.hitstop, heavy ? 0.06 : 0.03);
+        hitStop(w, [a, t], heavy ? 0.06 : 0.03);
         const hx = (a.x + t.x) / 2, hy = t.y - 60;
         const len = Math.hypot(kx, ky) || 1;
         const shown = w.noDamage && !t.dummy ? 0 : dmg;
@@ -351,7 +362,7 @@
         t.x = a.x - a.face * 30;
         t.vx = -a.face * 950; t.vy = -540; t.ground = false; t.st = 'tumble'; t.spinV = -a.face * 12;
         t.stun = 0.7; t.atk = null; t.blocking = false; t.ledge = null; t.lastHit = a.id;
-        w.hitstop = Math.max(w.hitstop, 0.06);
+        hitStop(w, [a, t], 0.06);
         callout(w, t, 'THROW!');
         w.events.push({type: 'hit', x: Math.round(t.x), y: Math.round(t.y - 60), kind: 'throw', power: 10, heavy: true,
             color: a.color, by: a.id, on: t.id, dx: -a.face, dy: -0.5});
@@ -360,6 +371,14 @@
         t.hp = Math.max(0, t.hp - MOVES.grab.dmg);
         if (t.hp <= 0)
             knockOut(w, t, a);
+    }
+
+    // does knocking t out end it? The last one standing (or the last team); and when the server says who
+    // would clinch the match with this round (w.clinch), only if that's who is left
+    function isFinal(w, t) {
+        const left = w.fighters.filter(o => o !== t && !o.dummy && o.st !== 'ko' && o.st !== 'gone' && o.hp > 0);
+        const sides = new Set(left.map(o => o.team || o.id));
+        return sides.size <= 1 && (!w.clinch || left.some(o => w.clinch.includes(o.id)));
     }
 
     function knockOut(w, t, a, kind) {
@@ -371,13 +390,20 @@
         t.vx = face * 950;
         t.vy = -760;
         t.spinV = face * 16;
-        w.hitstop = 0.12;                             // the knockout freeze
-        w.clash = null;
-        w.koSlow = 1.0;                               // then a second at quarter speed
         t.bounces = 0;
         t.mantle = null; t.ledge = null;
+        // the cinema is for the K.O. that ends it; any other: a 50 ms freeze for the two of them, and everyone
+        // else fights on at full speed
+        const final = isFinal(w, t);
+        if (final) {
+            w.hitstop = 0.12;                         // the knockout freeze
+            w.clash = null;
+            w.koSlow = 1.2;                           // then 1.2 s at 0.2x
+        } else {
+            hitStop(w, [a, t], 0.05);
+        }
         w.events.push({type: 'ko', x: Math.round(t.x), y: Math.round(t.y - 50), id: t.id, by: a ? a.id : null,
-            color: a ? a.color : '#f1f5f9', kind: kind || null});
+            color: a ? a.color : '#f1f5f9', kind: kind || null, final});
     }
 
     // a bomb or a shockwave: everyone near is thrown away from (x, y)
@@ -402,9 +428,9 @@
             w.hitstop -= dtReal;
             return;
         }
-        if (w.koSlow > 0) {                            // after a knockout: a second at 0.25x
+        if (w.koSlow > 0) {                            // after the deciding knockout: 1.2 s at 0.2x
             w.koSlow -= dtReal;
-            w.timeScale += (0.25 - w.timeScale) * 0.5;
+            w.timeScale += (0.2 - w.timeScale) * 0.5;
         } else if (w.clash) {                          // the climax: 0.15x until someone lands the first blow
             w.clash.t -= dtReal;
             w.timeScale = 0.15;
@@ -428,12 +454,15 @@
             }
         }
         const live = w.fighters.filter(f => f.st !== 'gone');
-        for (const f of live)
+        for (const f of live)                          // (a local hit-stop: these two hold still, nobody else)
+            f.freeze = Math.max(0, (f.freeze || 0) - dtReal);
+        const moving = live.filter(f => !(f.freeze > 0));
+        for (const f of moving)
             control(w, f, inputs[f.id] || {k: 0, aim: null}, dt);
-        for (const f of live)
+        for (const f of moving)
             attacks(w, f, live, dt);
         slowmoCheck(w, live);
-        for (const f of live)
+        for (const f of moving)
             move(w, f, dt);
         separate(w, live);
         platforms(w, live, dt);
@@ -775,7 +804,7 @@
         f.vy = Math.min(f.vy, -320);
         if (f.st !== 'ko' && !w.noDamage && !f.dummy)
             f.hp = Math.max(1, f.hp - 3);
-        w.hitstop = Math.max(w.hitstop, 0.05);
+        hitStop(w, [f], 0.05);
         w.events.push({type: 'wallbounce', id: f.id, x: Math.round(f.x), y: Math.round(f.y - 50), pillar: !!solid});
         if (solid && solid.solid) {                  // a pillar takes the blow, and gives way after a few
             solid.hp--;
@@ -991,7 +1020,8 @@
             }
             if (f.st !== 'ko') {
                 f.hp = 0;
-                w.events.push({type: 'ko', x: Math.round(f.x), y: H - 40, id: f.id, by: f.lastHit, fell: true});
+                w.events.push({type: 'ko', x: Math.round(f.x), y: H - 40, id: f.id, by: f.lastHit, fell: true,
+                    final: isFinal(w, f)});
             }
             f.st = 'gone';
         }
@@ -1241,7 +1271,7 @@
                     b.hit.push(f.id);
                     f.vx = b.dir * 420; f.vy = -980; f.ground = false; f.st = 'tumble'; f.spinV = b.dir * 12;
                     f.stun = 0.6; f.atk = null;
-                    w.hitstop = Math.max(w.hitstop, 0.06);
+                    hitStop(w, [f], 0.06);
                     w.events.push({type: 'hit', x: Math.round(f.x), y: Math.round(f.y - 50), kind: 'beam', power: 18,
                         heavy: true, color: '#f43f5e', by: null, on: f.id, dx: 0, dy: -1});
                     if (!w.noDamage) {

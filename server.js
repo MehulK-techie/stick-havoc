@@ -270,6 +270,9 @@ function startRound() {
     if (m.mode === 'bomb')
         m.bomb = null;
     // match point for both of the two in the ring: the climax clash comes in at half health
+    // who would clinch the match by winning this round: only their final blow gets the K.O. cinematic
+    // (the arcade's rounds each decide a stage: every one does)
+    m.world.clinch = m.mode === 'arcade' ? null : m.active.filter(id => (m.roundWins.get(id) || 0) >= m.target - 1);
     m.world.matchPoint = m.active.length === 2 && m.mode !== 'bomb' &&
         m.active.every(id => (m.roundWins.get(id) || 0) >= m.target - 1);
     setPhase(m.active.length >= 2 ? 'countdown' : 'waiting');

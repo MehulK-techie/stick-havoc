@@ -437,5 +437,26 @@ function run(w, frames, inputs) {
     run(w, 3, {});
     check('a pillar waits for its spot to clear before it comes back', waited && pillar.alive);
 }
+{   // a K.O. with others still fighting: no slow motion, no world freeze; only the deciding one is cinematic
+    const w = world('colosseum');
+    const a = fighter(w, 1, 700), b = fighter(w, 2, 750), c = fighter(w, 3, 1200), d = fighter(w, 4, 1300);
+    a.face = 1; b.hp = 3; c.vx = 300;
+    const ev = run(w, 3, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}, 3: {k: P.IN.RIGHT}}));
+    const ko = ev.find(e => e.type === 'ko');
+    check('a mid-match K.O. (3 still up): not final, no slow motion, no world freeze', ko && !ko.final && !(w.koSlow > 0) &&
+        w.timeScale === 1 && w.hitstop <= 0);
+    const x0 = c.x;
+    run(w, 1, {3: {k: P.IN.RIGHT}});
+    check('and the others keep moving through it', c.x > x0);
+    const w2 = world('colosseum'); const e = fighter(w2, 1, 700), g = fighter(w2, 2, 750); e.face = 1; g.hp = 3;
+    w2.clinch = [];                                    // (nobody at match point)
+    const ev2 = run(w2, 3, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    check('1v1, not match point: the round ends without the cinematic', ev2.some(x => x.type === 'ko' && !x.final) &&
+        !(w2.koSlow > 0));
+    const w3 = world('colosseum'); const h = fighter(w3, 1, 700), j = fighter(w3, 2, 750); h.face = 1; j.hp = 3;
+    w3.clinch = [1];
+    run(w3, 9, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    check('1v1 at match point: the deciding K.O. goes to 0.2x', w3.koSlow > 0 && w3.timeScale < 0.5);
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

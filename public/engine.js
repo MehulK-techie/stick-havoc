@@ -310,11 +310,18 @@
             setTimeout(() => banner(`Shadow Mehul is beaten · ${ev.time}s`, '#e5e7eb', 2.2, 32), 1400);
             break;
         case 'ko':
-            ring(ev.x, ev.y, ev.color || '#f1f5f9');
-            burst(ev.x, ev.y, ev.color || '#f1f5f9', 50, 1300);
-            cam.shake = 28; cam.flash = 1; cam.slow = 0;
-            startCinema();
-            banner('K.O.!', '#f43f5e', 1.5, 150, 'spring');
+            if (ev.final) {                           // the K.O. that ends it: the full cinematic
+                ring(ev.x, ev.y, ev.color || '#f1f5f9');
+                burst(ev.x, ev.y, ev.color || '#f1f5f9', 50, 1300);
+                cam.shake = 28; cam.flash = 1; cam.slow = 0;
+                startCinema();
+                banner('K.O.!', '#f43f5e', 1.5, 150, 'spring');
+            } else {                                  // one of several: a burst and K.O. over them; the fight goes on
+                ring(ev.x, ev.y, ev.color || '#f1f5f9');
+                burst(ev.x, ev.y, ev.color || '#f1f5f9', 26, 900);
+                cam.shake = Math.max(cam.shake, 10);
+                Lobby.pop({text: 'K.O.', x: ev.x, y: ev.y - 70, big: true, color: '#f43f5e'});
+            }
             if (ev.id === myId)
                 Touch.buzz(90);
             Sfx.play('ko');

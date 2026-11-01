@@ -406,5 +406,20 @@ function run(w, frames, inputs) {
     check('overlapping fighters separate sideways, feet still on the floor', Math.abs(b.x - a.x) >= 29 && a.y === 820 &&
         b.y === 820 && a.ground && b.ground);
 }
+{   // the parkour tower: up to four on the clock at once, each their own; off the tower, your clock resets
+    const w = world('lobby'); w.noDamage = true;
+    const start = w.plats.find(p => p.parkour === 'start');
+    const fs = [0, 1, 2, 3, 4].map(i => {
+        const f = fighter(w, i + 1, start.x + 8 + i * 18, start.y - 30); f.ground = false; f.st = 'air'; f.vy = 100; return f;
+    });
+    const ev = run(w, 4, {});
+    const on = fs.filter(f => f.climbStart !== undefined);
+    check('four climbers on the clock, the fifth told the tower is full', on.length === 4 &&
+        ev.filter(e => e.type === 'climbFull').length === 1);
+    on[0].x = P.MAPS.lobby.climbZone - 40;          // one wanders off the tower
+    const ev2 = run(w, 1, {});
+    check("leaving the tower resets that climber's clock only", on[0].climbStart === undefined &&
+        ev2.some(e => e.type === 'climbReset' && e.id === on[0].id) && on.slice(1).every(f => f.climbStart !== undefined));
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

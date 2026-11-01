@@ -85,6 +85,32 @@ const Lobby = (() => {
         ctx.fill();
         ctx.restore();
         label(ctx, 'WARDROBE', x, y - 226);
+        neonSign(ctx, t, x, y - 280);
+    }
+
+    // CUSTOMIZE in neon, 70 px above the mirror (over the ledge), with an arrow blinking down at it
+    function neonSign(ctx, t, x, y) {
+        const flicker = Math.sin(t * 2.4) * 0.5 + 0.5, dead = (t % 7) > 6.82;   // a slow pulse; now and then a stutter
+        ctx.save();
+        ctx.textAlign = 'center';
+        rounded(ctx, x - 88, y - 26, 176, 40, 10);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(34, 211, 238, ${dead ? 0.2 : 0.55 + flicker * 0.35})`;
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = dead ? 0 : 10 + flicker * 10;
+        ctx.stroke();
+        ctx.font = '800 20px system-ui, sans-serif';
+        ctx.fillStyle = dead ? 'rgba(244, 114, 182, 0.3)' : '#f9a8d4';
+        ctx.shadowColor = '#f472b6';
+        ctx.shadowBlur = dead ? 0 : 14 + flicker * 12;
+        ctx.fillText('CUSTOMIZE', x, y + 1);
+        const on = Math.floor(t * 2) % 2 === 0;                                 // the arrow: on, off, on
+        ctx.font = '700 16px system-ui, sans-serif';
+        ctx.fillStyle = on ? '#22d3ee' : 'rgba(34, 211, 238, 0.25)';
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = on ? 14 : 0;
+        ctx.fillText('▼', x, y + 34 + (on ? 2 : 0));
+        ctx.restore();
     }
 
     // the host's console: a desk below, and the stadium screen high on the wall
@@ -212,13 +238,31 @@ const Lobby = (() => {
 
     // the parkour tower: where the clock starts and stops, and the best run so far
     function parkour(ctx) {
-        if (state.record) {
-            const finish = MAPS.lobby.plats.find(p => p.parkour === 'finish');
-            ctx.textAlign = 'right';
-            ctx.font = '700 11px ui-monospace, monospace';
-            ctx.fillStyle = '#facc15';
-            ctx.fillText(`RECORD: ${state.record.t.toFixed(2)}s by ${state.record.name}`, finish.x - 10, finish.y + 4);
+        // the billboard, between the stadium screen and the tower: the five best runs, one per climber
+        const bx = 1132, by = 168, bw = 118, board = state.board || [];
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+        rounded(ctx, bx, by, bw, 34 + Math.max(1, board.length) * 16, 8);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.font = '800 9px system-ui, sans-serif';
+        ctx.fillStyle = '#facc15';
+        ctx.fillText('LOBBY CLIMB RECORD', bx + bw / 2, by + 16);
+        ctx.font = '700 10px ui-monospace, monospace';
+        if (!board.length) {
+            ctx.fillStyle = '#64748b';
+            ctx.fillText('no runs yet', bx + bw / 2, by + 36);
         }
+        board.forEach((r, i) => {
+            const ry = by + 36 + i * 16, name = r.name.length > 8 ? r.name.slice(0, 7) + '…' : r.name;
+            ctx.fillStyle = i ? '#cbd5e1' : '#fde68a';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${i + 1} ${name}`, bx + 8, ry);
+            ctx.textAlign = 'right';
+            ctx.fillText(`${r.t.toFixed(2)}s`, bx + bw - 8, ry);
+        });
         for (const p of MAPS.lobby.plats) {
             if (!p.parkour)
                 continue;
@@ -307,6 +351,7 @@ const Lobby = (() => {
             rot: (Math.random() - 0.5) * 0.3, color: ev.color});
     }
 
-    const state = {near: null, sel: null, ready: 0, max: 10, starting: null, version: null, goals: 0, record: null};
+    const state = {near: null, sel: null, ready: 0, max: 10, starting: null, version: null, goals: 0, record: null,
+        board: []};
     return {back, front, pop, drawPops, state};
 })();

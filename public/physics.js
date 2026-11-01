@@ -49,6 +49,8 @@
                 {x: 1440, y: 450, w: 90, h: 12, oneWay: true, parkour: 'start'}, {x: 1260, y: 350, w: 80, h: 12, oneWay: true},
                 {x: 1440, y: 250, w: 70, h: 12, oneWay: true}, {x: 1270, y: 150, w: 60, h: 12, oneWay: true},
                 {x: 1420, y: 70, w: 110, h: 12, oneWay: true, parkour: 'finish'}],
+            climbZone: 1220,                  // left of this, a climber has left the tower: their clock resets
+            climbers: 4,                      // at most this many on the clock at once
             stations: {wardrobe: {x: 250, y: 800}, console: {x: 800, y: 800}, dojo: {x: 1040, y: 800},
                 dummy: {x: 1320, y: 800}},
             ball: {x: 520, y: 700},
@@ -909,7 +911,10 @@
             }
         }
         if (f.ground && !wasGround && f.plat && f.plat.parkour) {
-            if (f.plat.parkour === 'start')
+            const on = w.fighters.filter(o => o !== f && o.climbStart !== undefined).length;
+            if (f.plat.parkour === 'start' && f.climbStart === undefined && on >= MAPS[w.map].climbers)
+                w.events.push({type: 'climbFull', id: f.id});   // (four on the tower already)
+            else if (f.plat.parkour === 'start')
                 f.climbStart = w.time;
             else if (f.climbStart !== undefined) {
                 w.events.push({type: 'climb', id: f.id, x: Math.round(f.x), y: Math.round(f.y),
@@ -917,8 +922,9 @@
                 f.climbStart = undefined;
             }
         }
-        if (f.ground && !wasGround && f.plat && f.plat.floor && f.climbStart !== undefined) {
-            f.climbStart = undefined;                 // back on the floor: the climb's clock resets
+        const zone = MAPS[w.map] && MAPS[w.map].climbZone;
+        if (f.climbStart !== undefined && ((f.ground && !wasGround && f.plat && f.plat.floor) || (zone && f.x < zone))) {
+            f.climbStart = undefined;                 // back on the floor, or off the tower: the clock resets
             w.events.push({type: 'climbReset', id: f.id});
         }
         if (f.ground && !wasGround) {

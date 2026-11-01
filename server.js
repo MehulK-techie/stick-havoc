@@ -92,7 +92,7 @@ const SANDBOX = {
 };
 let lastHost = null;
 let lobbyGoals = 0;                   // the lobby's football score, kept for the whole session
-let climbRecord = null;               // the parkour tower's best: {t, name}
+let climbBoard = [];                  // the parkour tower's leaderboard: each climber's best, [{t, name}], fastest first
 let scene = 'lobby';            // lobby | match
 let lobby = newLobby();
 let match = null;               // {mode, map, world, phase, phaseT, queue, active, roundWins, bomb, ...}
@@ -501,9 +501,13 @@ function lobbyTick(dt) {
     P.step(lobby, inputs, dt);
     pendingEvents.push(...lobby.events);
     for (const e of lobby.events) {
-        if (e.type === 'climb' && (!climbRecord || e.t < climbRecord.t)) {
-            climbRecord = {t: e.t, name: (players.get(e.id) || {}).name || '?'};
-            pendingEvents.push({type: 'record', t: e.t, name: climbRecord.name});
+        if (e.type === 'climb') {
+            const name = (players.get(e.id) || {}).name || '?', mine = climbBoard.find(r => r.name === name);
+            if (!mine || e.t < mine.t) {
+                climbBoard = [...climbBoard.filter(r => r.name !== name), {t: e.t, name}].sort((a, b) => a.t - b.t).slice(0, 5);
+                if (climbBoard[0].name === name && climbBoard[0].t === e.t)
+                    pendingEvents.push({type: 'record', t: e.t, name});
+            }
         }
     }
     // the goal against the right wall: the ball over the line scores, then comes back after 1.5 s
@@ -636,7 +640,7 @@ function snapshot() {
             f.inv > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, r1(f.spin), f.ground ? 1 : 0,
             f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0,
             f.ghost ? 1 : 0, f.climbStart !== undefined ? Math.round((w.time - f.climbStart) * 100) / 100 : -1]),
-        goals: lobbyGoals, record: climbRecord, ballOut: !!(w.ball && w.ball.goalT !== undefined),
+        goals: lobbyGoals, record: climbBoard[0] || null, board: climbBoard, ballOut: !!(w.ball && w.ball.goalT !== undefined),
         cr: w.crates.map(c => [Math.round(c.x), Math.round(c.y), c.kind, c.landed ? 1 : 0]),
         sh: w.shots.map(s => [Math.round(s.x), Math.round(s.y), s.kind, Math.round(s.vx)]),
         tl: m && m.timeLimit ? Math.max(0, Math.ceil(m.timeLimit - m.clock)) : null,

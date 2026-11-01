@@ -117,7 +117,7 @@
             }
         });
         Object.assign(Lobby.state, {sel: s.sel, ready: s.ready, max: s.max, starting: s.starting, goals: s.goals,
-            record: s.record});
+            record: s.record, board: s.board || []});
         Hud.setScene(s.scene);
         if (s.scene === 'lobby' && scene !== 'lobby') {
             hidePodium();
@@ -491,7 +491,11 @@
             break;
         case 'climbReset':
             if (ev.id === myId)
-                Hud.toast('Back on the floor: the climb clock resets');
+                Hud.toast('Off the tower: the climb clock resets');
+            break;
+        case 'climbFull':
+            if (ev.id === myId)
+                Hud.toast('Four on the tower already: wait for one to finish or drop');
             break;
         case 'tech':
             dust(ev.x, ev.y, 10);
@@ -625,6 +629,7 @@
                 ak: fb[8] || null, ap: fb[9], combo: fb[10], inv: fb[11], shield: fb[12],
                 spin: fa[13] + (fb[13] - fa[13]) * k, ground: fb[14], aimY: fb[15], dummy: fb[0] === 0,
                 name: p.name, color: p.color, gear: p.gear || {}, weapon: fb[16] || null, uses: fb[17], ghost: fb[18],
+                climb: fb[19] >= 0 ? fa[19] + (fb[19] - fa[19]) * k : -1,
                 bomb: !!(b.s.bomb && b.s.bomb.id === fb[0]), bombT: b.s.bomb ? b.s.bomb.t : 0});
         }
         return {s: b.s, f: out, an: b.s.an, cr: b.s.cr || [], sh: b.s.sh || []};
@@ -1000,6 +1005,19 @@
             ctx.font = '600 14px system-ui, sans-serif';
         } else if (f.id === hostId) {
             ctx.fillText('👑', f.x - ctx.measureText(f.name).width / 2 - 12, ty);
+        }
+        if (f.climb >= 0) {                               // on the tower: this climber's own clock, over their head
+            const text = `${f.name}: ${f.climb.toFixed(2)}s`;
+            ctx.font = '700 11px ui-monospace, monospace';
+            const w = ctx.measureText(text).width + 14, cy = ty - (f.id === hostId ? 58 : 36);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.fillRect(f.x - w / 2, cy, w, 18);
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.7)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(f.x - w / 2, cy, w, 18);
+            ctx.fillStyle = '#e5e7eb';
+            ctx.fillText(text, f.x, cy + 13);
+            ctx.font = '600 14px system-ui, sans-serif';
         }
         if (f.weapon) {                                   // what's in hand, and how much is left
             ctx.font = '700 11px system-ui, sans-serif';

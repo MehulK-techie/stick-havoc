@@ -101,6 +101,7 @@ const Hud = (() => {
         fill($('dHats'), [[null, 'None'], ...Object.entries(options.hats)], 'hat', chip);
         fill($('dTrails'), Object.entries(options.trails), 'trail', chip);
         $('drawer').classList.add('open');
+        requestAnimationFrame(mirror);
         Sfx.play('open');
     }
 
@@ -128,6 +129,52 @@ const Hud = (() => {
         try {
             localStorage.setItem('sh-look', JSON.stringify(Object.assign({}, look, {name: $('dName').value.trim()})));
         } catch { /* private window */ }
+    }
+
+    // the drawer's mirror: your fighter as you dress them, idling, then running back and forth to show the trail
+    const trailMarks = [];
+    function mirror(now) {
+        if (!isDrawerOpen() || !look)
+            return;
+        const cv = $('dMirror'), g = cv.getContext('2d'), t = now / 1000;
+        const W = cv.width, H = cv.height;
+        g.clearRect(0, 0, W, H);
+        g.save();
+        g.scale(2, 2);                                // (drawn at half size, crisp on high-density screens)
+        const w = W / 2, phase = t % 6, running = phase > 2.5;
+        const x = w / 2 + (running ? Math.sin((phase - 2.5) * 1.8) * 90 : 0);
+        const vx = running ? Math.cos((phase - 2.5) * 1.8) * 90 * 1.8 * 4 : 0;
+        const f = {x, y: H / 2 - 22, face: vx < -5 ? -1 : 1, st: Math.abs(vx) > 60 ? 'run' : 'idle', vx,
+            color: look.color, gear: {hat: look.hat, trail: look.trail}, inv: 0};
+        if (Math.abs(vx) > 300)
+            trailMarks.push({x, y: f.y, t, f: Object.assign({}, f)});
+        while (trailMarks.length && t - trailMarks[0].t > 0.5)
+            trailMarks.shift();
+        for (const m of trailMarks) {                 // the dash trail, as the game draws its kind
+            const age = (t - m.t) / 0.5, a = 1 - age;
+            if (look.trail === 'ghost') {
+                Physics.drawRig(g, m.f, m.t, {alpha: a * 0.3, noGlow: true});
+            } else if (look.trail === 'rainbow') {
+                g.fillStyle = `hsla(${(m.t * 600) % 360}, 90%, 62%, ${a * 0.7})`;
+                g.fillRect(m.x - 3, m.y - 70 + (m.t * 97 % 1) * 40, 6, 6);
+            } else if (look.trail === 'smoke') {
+                g.fillStyle = `rgba(100, 116, 139, ${a * 0.35})`;
+                g.beginPath(); g.arc(m.x, m.y - 40 - age * 20, 8 + age * 12, 0, Math.PI * 2); g.fill();
+            } else if (look.trail === 'pixel') {
+                g.fillStyle = look.color;
+                g.globalAlpha = a;
+                g.fillRect(Math.round(m.x / 4) * 4, Math.round((m.y - 30 - (m.t * 53 % 1) * 50) / 4) * 4, 4, 4);
+                g.globalAlpha = 1;
+            } else {                                  // sparkle
+                g.fillStyle = `rgba(255, 255, 255, ${a})`;
+                g.fillRect(m.x + (m.t * 31 % 1) * 20 - 10, m.y - 20 - (m.t * 71 % 1) * 70, 2, 2);
+            }
+        }
+        g.fillStyle = 'rgba(148, 163, 184, 0.25)';
+        g.fillRect(20, f.y, w - 40, 1);
+        Physics.drawRig(g, f, t);
+        g.restore();
+        requestAnimationFrame(mirror);
     }
 
     function closeDrawer() {

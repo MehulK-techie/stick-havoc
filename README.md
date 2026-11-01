@@ -34,7 +34,10 @@ blocking the port: on Fedora, `sudo firewall-cmd --add-port=3000/tcp`.
 You arrive in a locker room you can walk around in, with everyone else who
 has joined (their names over their heads). Three stations:
 
-- **Wardrobe** (left): stand at it and press `E`. While the drawer is open
+- **Wardrobe** (left, under a pulsing neon `CUSTOMIZE` sign with an arrow
+  blinking down at it): stand at it and press `E`. The drawer opens on a
+  live mirror: your fighter in the colour and headgear you've picked,
+  idling, then running back and forth to show your dash trail. While the drawer is open
   you're a see-through ghost: nobody can hit, grab or push you, and any
   number of people can customize at once. Name; sixteen colours, one per
   player, like Among Us (a colour someone wears is locked, with their
@@ -59,10 +62,13 @@ has joined (their names over their heads). Three stations:
   launcher lofts it; it bounces lively off floors and walls. A goal sets off
   confetti, fireworks over the net, an air horn and a chime, `GOAL!`, and counts on `LOBBY BALL: X GOALS` (for the session); the ball
   drops back in the middle 1.5 s later.
-- **Parkour tower** (top right): step on `START ▲ CLIMB` and a clock runs at
-  the top right of your screen (`CLIMB: 0.00s`); reach `FINISH` for gold
-  fireworks and your time. The best run is on a plaque by the finish
-  (`RECORD: X.XXs by Name`). Drop back to the floor and the clock resets.
+- **Parkour tower** (top right): up to four can climb at once, each on
+  their own clock. Step on `START ▲ CLIMB` and yours runs, over your head
+  (`Mehul: 2.34s`) and at the top right of your screen (`CLIMB: 0.00s`);
+  a fifth climber is told to wait. Reach `FINISH` for gold fireworks and
+  your time. Drop back to the floor, or wander off the tower to the left,
+  and your clock resets. The `LOBBY CLIMB RECORD` billboard beside the
+  tower lists the five best runs, one per climber, for the session.
 - **Host console** (middle): the stadium screen high on the wall shows the
   room's settings, `PLAYERS READY` (up to 15) and the join QR. The room host (a lit
   `👑 ROOM HOST` badge and a gold ring at their feet; the first to join, and

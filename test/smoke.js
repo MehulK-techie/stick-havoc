@@ -272,7 +272,7 @@ async function brawl(fighters, ms) {
     b.send({t: 'lobby'});
     await until(() => last.scene === 'lobby', 3000);
     // ---------------- the 1P sandbox: only for someone alone in the room
-    const solo = {t: 'sandbox', mode: 'rumble', level: 'hard', crates: 'frequent', map: 'shuffle', target: 3};
+    const solo = {t: 'sandbox', mode: 'rumble', level: 'hard', crates: 'frequent', map: 'shuffle', target: 3, bots: 3};
     b.send(solo);
     await sleep(400);
     check('the sandbox is refused with two in the room', last.scene === 'lobby');
@@ -282,6 +282,16 @@ async function brawl(fighters, ms) {
     check('alone: the sandbox starts, FFA against 3 bots on a real map', await until(() => last.scene === 'match' &&
         last.sandbox, 3000) && P.ARENAS.includes(last.map) && last.act.length === 4 &&
         b.roster.list.filter(p => p.bot).length === 3);
+    await until(() => last.ph === 'fight', 6000);
+    evs = [];
+    b.send({t: 'restart'});
+    check('R: the round restarts at once, with its countdown', await until(() => evs.some(x => x.type === 'restart') &&
+        last.ph === 'countdown', 2000) && last.scene === 'match' && last.act.length === 4);
+    b.send({t: 'lobby'});
+    await until(() => last.scene === 'lobby', 3000);
+    b.send({t: 'sandbox', mode: 'rumble', level: 'demon', crates: 'off', map: 'colosseum', target: 3, bots: 2});
+    check('Demon, two of them: numbered, on the Colosseum', await until(() => last.scene === 'match' && last.act.length === 3,
+        3000) && last.map === 'colosseum' && ['Demon', 'Demon 2'].every(n => b.roster.list.some(p => p.bot && p.name === n)));
     b.send({t: 'lobby'});
     check('Esc / the corner button: back to the lobby, the bots gone', await until(() => last.scene === 'lobby' &&
         !b.roster.list.some(p => p.bot), 3000));

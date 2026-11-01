@@ -28,6 +28,10 @@
             sparring: true, dive: 0.6, dashCancel: 0.3, grab: 0.1, jumpy: 0.04},
         sparHard: {name: 'Practice Bot', color: '#f8fafc', hat: 'viking', react: 0.06, attack: 0.9, heavy: 0.25,
             sparring: true, parry: true, techs: true, dive: 0.8, dashCancel: 0.5, grab: 0.15, jumpy: 0.04},
+        // the sandbox's Demon: the practice bot's defence at 30 ms, juggles, and never lets up
+        demon: {name: 'Demon', color: '#dc2626', hat: 'viking', eyes: true, react: 0.03, attack: 0.96, heavy: 0.3,
+            sparring: true, parry: true, techs: true, juggle: true, dive: 0.85, dashCancel: 0.7, grab: 0.2,
+            weapons: true, jumpy: 0.03},
     };
     const LADDER = ['rookie', 'acrobat', 'brawler', 'ninja', 'boss'];
     const TAPS = IN.LIGHT | IN.HEAVY | IN.JUMP | IN.DASH | IN.GRAB | IN.USE;

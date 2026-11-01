@@ -80,19 +80,24 @@ has joined (their names over their heads). Three stations:
   move until `FIGHT!`. Every round starts the same way. Random and Banger
   Shuffle are settled by the server the moment the host presses start. (`Q` / `Tab` cycle mode and map without the
   drawer.)
-- **1P Arcade** (the settings drawer's button, the host): a ladder of five computer opponents, one
-  round each, on the four arenas in turn: Rookie Stick (slow, basic),
-  Acrobat (jumps and dive kicks), Brawler (relentless strings, dash
-  cancels), Ninja (guards and parries, wall kicks, picks up weapons) and the
-  boss, **Shadow Mehul** (a dark figure with red eyes: juggles, grabs,
-  parries). `STAGE CLEAR! Time: XXs` between stages, with your health
-  restored; lose once and it's over. Anyone else in the room watches.
-- **1P Solo Match / Map Sandbox** (the settings drawer, when you're the only
-  one in the room): any map (or Random / Banger Shuffle) and match length
-  from the settings above, then a mode against bots: 1v1 Duel, FFA with 3
-  bots, Bomb Tag or Floor Is Lava; bots Easy, Normal or Hard; weapon crates
-  Off, Normal or Frequent (three times as often). `Esc`, or Back to lobby in
-  the corner, leaves at any time.
+- **1P Solo** (the host: `P` at the console, or the settings drawer's
+  `🎮 1P Solo` button) opens a window with two choices:
+  - **Arcade Ladder**: five computer opponents in a row, one round each, on
+    the arenas in turn: Rookie Stick (slow, basic), Acrobat (jumps and dive
+    kicks), Brawler (relentless strings, dash cancels), Ninja (guards and
+    parries, wall kicks, picks up weapons) and the boss, **Shadow Mehul** (a
+    dark figure with red eyes: juggles, grabs, parries). `STAGE CLEAR! Time:
+    XXs` between stages, with your health restored; lose once and it's over.
+    Anyone else in the room watches.
+  - **Custom Sandbox** (only when you're the only one in the room): any of
+    the six arenas; 1v1 Duel, FFA vs bots, Bomb Tag or Floor Is Lava; 1 to 3
+    bots; Easy (casual), Medium (strings and combos), Hard (guards, parries
+    and techs: the practice bot's defence) or Demon (30 ms reactions,
+    parries, techs and juggles, and never lets up); weapons Off, On or
+    Frequent (crates three times as often); first to 3, 5 or 7.
+
+  In either, `R` restarts the round at once (after the last round, the
+  whole match), and `Esc` or Back to lobby in the corner leaves.
 - **Training dummy** (right): it springs back from every hit and pops the
   damage (`5 DMG`, `BOOM!`, `CRIT!`); three hits into a combo it starts
   talking back (`OOF!`, `NICE COMBO!`, `OKAY, OKAY!`, `I YIELD!`). Players can knock each other about in
@@ -117,7 +122,8 @@ has joined (their names over their heads). Three stations:
 | Grab & throw (goes through a guard) | `G` | G |
 | Use a station · pick up / throw a weapon | `E` | E |
 | Move list | `Shift` (or ? Moves) | ? (top right) |
-| Practice bot (lobby) · its difficulty | `P` · `B` | |
+| Practice bot (lobby) · its difficulty · 1P Solo (host, at the console) | `P` · `B` · `P` | |
+| 1P: restart the round · leave | `R` · `Esc` | |
 | Punch where you point | left click | |
 | Emojis 🔥 💀 🤡 🚀 · vote | `5`–`8` · `1` `2` | the buttons |
 

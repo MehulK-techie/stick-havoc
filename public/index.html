@@ -94,15 +94,28 @@
   <p class="sub" id="sNote"></p>
   <div id="sRows"></div>
   <button id="sStart" class="primary">Start match <kbd>Enter</kbd></button>
-  <button id="sArcade">1P Arcade ladder</button>
-  <section id="sSolo" class="hidden" aria-label="1P solo match and map sandbox">
-    <h3>1P Solo Match / Map Sandbox</h3>
-    <p class="sub">The map and match length above, against bots. <kbd>Esc</kbd> leaves at any time.</p>
-    <div id="sSoloRows"></div>
-    <button id="sSandbox" class="primary">Start sandbox match</button>
-  </section>
+  <button id="sSolo">🎮 1P Solo: arcade or sandbox <kbd>P</kbd></button>
   <button id="sClose">Close <kbd>Esc</kbd></button>
 </aside>
+
+<!-- 1P: the arcade ladder, or a sandbox of your own -->
+<div id="solo" class="panel hidden" role="dialog" aria-label="1P Solo">
+  <h2>1P Solo</h2>
+  <div class="cards">
+    <section class="card">
+      <h3>Arcade Ladder</h3>
+      <p class="sub">Five opponents in a row, one round each, up to the boss, Shadow Mehul. Lose once and it's over.</p>
+      <button id="oArcade" class="primary">Start the ladder</button>
+    </section>
+    <section class="card">
+      <h3>Custom Sandbox</h3>
+      <p class="sub" id="oNote"></p>
+      <div id="oRows"></div>
+      <button id="oSandbox" class="primary">Start sandbox</button>
+    </section>
+  </div>
+  <button id="oClose">Close <kbd>Esc</kbd></button>
+</div>
 
 <!-- the wardrobe -->
 <aside id="drawer" class="panel drawer" aria-label="Wardrobe">

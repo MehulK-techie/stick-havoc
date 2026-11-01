@@ -78,10 +78,11 @@ const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'lava', 'random', 'shuffle'], 
 // Banger Shuffle: weighted picks; never the last mode again, never one of the last 2 maps
 const SHUFFLE_WEIGHTS = {koth: 3, rumble: 3, bomb: 2, lava: 2};
 const history = [];                   // the last 2 matches, [{mode, map}], newest last
-// the 1P sandbox: any map, a mode against bots, how hard they are, how often crates fall
+// the 1P sandbox: any map, a mode against 1-3 bots, how hard they are, how often crates fall
 const SANDBOX = {
     mode: {duel: 'koth', rumble: 'rumble', bomb: 'bomb', lava: 'lava'},
-    level: {easy: ['rookie', 'acrobat', 'rookie'], normal: ['brawler', 'acrobat', 'training'], hard: ['ninja', 'brawler', 'boss']},
+    level: {easy: ['rookie', 'acrobat', 'training'], medium: ['brawler', 'acrobat', 'training'],
+        hard: ['sparHard', 'ninja', 'brawler'], demon: ['demon', 'demon', 'demon']},
     crates: {off: 0, normal: 1, frequent: 3},
 };
 let lastHost = null;
@@ -143,9 +144,9 @@ function lobbySpawn(p) {
 
 // ---------------------------------------------------------------- bots
 // a computer fighter (bot.js plays it): the training bot, or an arcade opponent
-function addBot(style) {
+function addBot(style, name) {
     const S = Bot.STYLES[style], id = nextId++;
-    players.set(id, {id, name: S.name, color: S.color, gear: {hat: S.hat, eyes: !!S.eyes}, joined: Date.now(),
+    players.set(id, {id, name: name || S.name, color: S.color, gear: {hat: S.hat, eyes: !!S.eyes}, joined: Date.now(),
         input: {k: 0, aim: null}, bot: {style, mem: {}}});
     return id;
 }
@@ -215,10 +216,14 @@ function startMatch(picked) {
 // 1P sandbox: the one person here picks a map and a mode, and bots fill the arena
 function startSandbox(playerId, o) {
     const {map} = resolvePick({mode: 'koth', map: o.map});
-    const styles = SANDBOX.level[o.level];
+    const styles = SANDBOX.level[o.level].slice(0, o.mode === 'duel' ? 1 : o.bots);
     match = newMatch(SANDBOX.mode[o.mode], map, {target: o.target, weapons: SANDBOX.crates[o.crates] > 0,
         sandbox: {player: playerId, crates: SANDBOX.crates[o.crates]}});
-    const bots = styles.slice(0, o.mode === 'duel' ? 1 : 3).map(style => addBot(style));
+    // (two of the same style get a number: Demon, Demon 2)
+    const bots = styles.map((style, i) => {
+        const n = styles.slice(0, i).filter(s => s === style).length;
+        return addBot(style, n ? `${Bot.STYLES[style].name} ${n + 1}` : null);
+    });
     if (match.mode === 'koth')
         match.queue = [playerId, ...bots];
     scene = 'match';
@@ -340,6 +345,25 @@ function nextArcadeStage() {
     startRound();
     pendingEvents.push({type: 'match', mode: 'arcade', map: m.map,
         name: `STAGE ${a.stage + 1} · ${Bot.STYLES[Bot.LADDER[a.stage]].name.toUpperCase()}`});
+}
+
+// R in 1P: the round again, straight away (after the last round: the whole match, or the arcade stage)
+function restartSolo() {
+    const m = match;
+    if (m.phase === 'end') {
+        m.roundWins = new Map(); m.champion = null; m.round = 0;
+        m.bestCombo = new Map(); m.finisher = null;
+    } else {
+        m.round--;
+    }
+    if (m.mode === 'koth') {                         // (the one player and their bot, back in the ring)
+        const all = [...new Set([...m.active, ...m.queue])].filter(id => players.has(id));
+        m.active = all.slice(0, 2);
+        m.queue = all.slice(2);
+    }
+    m.world = null;
+    pendingEvents.push({type: 'restart'});
+    startRound();
 }
 
 // the winner's card: rounds won and the best of the rest, the longest combo, the move that ended it
@@ -739,8 +763,12 @@ wss.on('connection', ws => {
             startArcade(id);
         } else if (m.t === 'sandbox' && isHost && scene === 'lobby' &&
             humans().length === 1 && Object.hasOwn(SANDBOX.mode, m.mode) && Object.hasOwn(SANDBOX.level, m.level) &&
-            Object.hasOwn(SANDBOX.crates, m.crates) && CHOICES.map.includes(m.map) && CHOICES.target.includes(m.target)) {
+            Object.hasOwn(SANDBOX.crates, m.crates) && CHOICES.map.includes(m.map) && CHOICES.target.includes(m.target) &&
+            [1, 2, 3].includes(m.bots)) {
             startSandbox(id, m);
+        } else if (m.t === 'restart' && scene === 'match' && (match.sandbox || match.arcade) &&
+            (match.sandbox || match.arcade).player === id && ['countdown', 'fight', 'ko', 'end'].includes(match.phase)) {
+            restartSolo();
         } else if (m.t === 'console' && isHost && scene === 'lobby' && (me.near === 'console' || m.do === 'start')) {
             // the host's console: Q cycles the mode, Tab the map, Start starts
             if (m.do === 'mode') {

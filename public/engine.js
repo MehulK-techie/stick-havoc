@@ -12,6 +12,7 @@
     let colors = [];                    // [[name, hex]] from the server
     let sparring = false;               // practice against the bot, simulated in this browser (spar.js)
     let sandbox = false;                // a 1P sandbox match is on (Esc goes back to the lobby)
+    let solo = false;                   // this browser's player is in a 1P match (sandbox or arcade): R restarts
     let serverNear = null;              // the station the server says you stand at (kept through sparring)
     let roster = new Map();             // id -> {name, color, gear, wins, bot}
     let snaps = [];                     // [{at, s}] newest last
@@ -96,6 +97,7 @@
 
     function onSnapshot(s) {
         sandbox = !!s.sandbox && s.scene === 'match';
+        solo = s.scene === 'match' && (sandbox || !!(s.arcade && s.arcade.player === myId));
         snaps.push({at: performance.now(), s});
         while (snaps.length > 8)
             snaps.shift();
@@ -428,6 +430,9 @@
         case 'match':
             cam.z = 0.7; cam.y = H * 0.8;        // a sweep in to the new stage
             Hud.toast(ev.name);
+            break;
+        case 'restart':
+            Hud.toast('Round restarted');
             break;
         case 'getReady':                          // the stage is up; the server's 3, 2, 1 follows
             cue('GET READY', '#e5e7eb', 0.6, 64);
@@ -1287,7 +1292,7 @@
     }
 
     function pushInput(force) {
-        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() ? 0 : bits();
+        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() || Hud.isSoloOpen() ? 0 : bits();
         if (sparring)
             return Spar.input(k, mouseBits ? aim : null);
         if (force || k !== sentK || aim !== sentAim) {
@@ -1364,9 +1369,11 @@
             return;
         }
         if (e.code === 'Escape') {
-            const menu = Hud.isSettingsOpen() || !document.getElementById('moves').classList.contains('hidden');
+            const menu = Hud.isSettingsOpen() || Hud.isSoloOpen() ||
+                !document.getElementById('moves').classList.contains('hidden');
             Hud.toggleMoves(false);
             Hud.closeSettings();
+            Hud.closeSolo();
             if (sandbox && !menu && !e.repeat)     // nothing to close: Esc leaves the sandbox
                 sendMsg({t: 'lobby'});
             return;
@@ -1380,8 +1387,15 @@
             }
             return;
         }
-        if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {   // anyone: practice against the bot
-            startSpar();
+        if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {
+            if (Lobby.state.near === 'console' && myId === hostId)
+                Hud.openSolo();                  // the host at the console: 1P Solo
+            else
+                startSpar();                     // anyone else, anywhere: practice against the bot
+            return;
+        }
+        if (e.code === 'KeyR' && scene === 'match' && solo && !e.repeat) {   // 1P: the round again, now
+            sendMsg({t: 'restart'});
             return;
         }
         if (Keys.is(e.code, 'use') && (scene === 'match' || sparring)) {   // in a match, E picks up / throws a weapon

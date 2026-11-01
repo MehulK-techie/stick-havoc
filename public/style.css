@@ -141,15 +141,26 @@ body.touch #keysBtn { display: none; }
 #sRows .opts button { font-size: 12px; padding: 4px 8px; }
 #sRows .opts button:disabled { opacity: 1; cursor: default; }
 #sRows .opts button:disabled:not(.on) { opacity: 0.4; }
-#settings > button, #sSolo > button { width: 100%; margin-top: 8px; }
-#sSolo { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line-2); }
-#sSolo h3 { margin: 0 0 2px; font-size: 14px; }
-#sSolo .sub { color: var(--dim); margin: 0 0 6px; font-size: 12px; }
-#sSoloRows .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0;
-                  border-top: 1px solid var(--line); }
-#sSoloRows .row .label { margin: 0; }
-#sSoloRows .opts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
-#sSoloRows .opts button { font-size: 12px; padding: 4px 8px; }
+#settings > button { width: 100%; margin-top: 8px; }
+/* 1P Solo: two cards side by side (stacked on a narrow screen) */
+#solo { background: rgba(15, 20, 32, 0.98); position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 10;
+        padding: 18px 20px; width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; }
+#solo h2 { margin: 0 0 12px; font-size: 18px; }
+#solo .cards { display: grid; grid-template-columns: 1fr 1.6fr; gap: 12px; }
+@media (max-width: 700px) { #solo .cards { grid-template-columns: 1fr; } }
+#solo .card { border: 1px solid var(--line-2); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; }
+#solo .card h3 { margin: 0 0 4px; font-size: 15px; }
+#solo .card .sub { color: var(--dim); font-size: 12px; margin: 0 0 10px; }
+#solo .card > button { margin-top: auto; width: 100%; }
+#solo .primary { font-weight: 700; background: rgba(34, 211, 238, 0.16); border-color: var(--accent); }
+#solo > button { width: 100%; margin-top: 12px; }
+#oRows { margin-bottom: 12px; }
+#oRows .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0;
+              border-top: 1px solid var(--line); }
+#oRows .row .label { margin: 0; }
+#oRows .opts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+#oRows .opts button { font-size: 12px; padding: 4px 8px; }
+#oRows .opts button:disabled:not(.on) { opacity: 0.35; }
 #settings .primary { font-weight: 700; background: rgba(34, 211, 238, 0.16); border-color: var(--accent); margin-top: 14px; }
 /* the combo counter, at the screen's left margin */
 #combo { position: fixed; left: 16px; top: 38%; z-index: 5; pointer-events: none; font-weight: 800; }

@@ -232,14 +232,6 @@ const Hud = (() => {
         map: ['Map', null],
     };
     let choices = null, settingsHost = false, settingsSel = null, settingsAlone = false;
-    // the 1P sandbox's own picks (only the one person in the room sees them; the map and length come from above)
-    const SOLO = {
-        mode: ['Mode', {duel: '1v1 Duel', rumble: 'FFA · 3 bots', bomb: 'Bomb Tag', lava: 'Floor Is Lava'}],
-        level: ['Bots', {easy: 'Easy', normal: 'Normal', hard: 'Hard'}],
-        crates: ['Weapon crates', {off: 'Off', normal: 'Normal', frequent: 'Frequent'}],
-    };
-    const solo = {mode: 'duel', level: 'normal', crates: 'normal'};
-
     const isAlone = isHost => !!(isHost && typeof Lobby !== 'undefined' && Lobby.state.ready === 1);
 
     // a settings row: a label, and a button per choice with the current one lit
@@ -290,18 +282,10 @@ const Hud = (() => {
             rows.appendChild(optionRow(title, choices[key], nameOf, sel[key], !isHost,
                 value => send({t: 'settings', key, value})));
         }
-        // alone in the room: the sandbox, against bots, on any map
-        const alone = isAlone(isHost);
-        settingsAlone = alone;
-        $('sSolo').classList.toggle('hidden', !alone);
-        const soloRows = $('sSoloRows');
-        soloRows.textContent = '';
-        for (const [key, [title, names]] of Object.entries(SOLO)) {
-            soloRows.appendChild(optionRow(title, Object.keys(names), v => names[v], solo[key], false, value => {
-                solo[key] = value;
-                renderSettings(sel, isHost);
-            }));
-        }
+        $('sSolo').classList.toggle('hidden', !isHost);
+        settingsAlone = isAlone(isHost);
+        if (isSoloOpen())
+            renderSolo();
     }
 
     // the snapshot's settings changed (the host clicked): redraw what everyone sees
@@ -309,6 +293,8 @@ const Hud = (() => {
         if (isSettingsOpen() && (JSON.stringify(sel) !== settingsSel || isHost !== settingsHost ||
             isAlone(isHost) !== settingsAlone))
             renderSettings(sel, isHost);
+        else if (isSoloOpen() && isAlone(isHost) === $('oSandbox').disabled)
+            renderSolo();              // (someone joined or left: the sandbox is only for one)
     }
 
     function closeSettings() {
@@ -320,14 +306,59 @@ const Hud = (() => {
         send({t: 'console', do: 'start'});
         closeSettings();
     });
-    $('sArcade').addEventListener('click', () => {
+    $('sSolo').addEventListener('click', () => openSolo());
+
+    // ------------------------------------------------------------ 1P Solo: the arcade ladder, or a sandbox
+    const SOLO = {
+        map: ['Map', null],
+        mode: ['Mode', {duel: '1v1 Duel', rumble: 'FFA vs bots', bomb: 'Bomb Tag', lava: 'Floor Is Lava'}],
+        bots: ['Bots', {1: '1', 2: '2', 3: '3'}],
+        level: ['Difficulty', {easy: 'Easy', medium: 'Medium', hard: 'Hard', demon: 'Demon'}],
+        crates: ['Weapons', {off: 'Off', normal: 'On', frequent: 'Frequent'}],
+        target: ['Match', {3: 'First to 3', 5: 'First to 5', 7: 'First to 7'}],
+    };
+    const LEVELS = {easy: 'casual, slow to react', medium: 'strings and combos', hard: 'guards, parries and techs',
+        demon: 'frame-perfect juggles and parries'};
+    const solo = {map: 'rooftops', mode: 'duel', bots: 3, level: 'medium', crates: 'normal', target: 3};
+    const isSoloOpen = () => !$('solo').classList.contains('hidden');
+
+    function renderSolo() {
+        const rows = $('oRows');
+        rows.textContent = '';
+        for (const [key, [title, names]] of Object.entries(SOLO)) {
+            const values = key === 'map' ? Physics.ARENAS : Object.keys(names).map(v => key === 'bots' || key === 'target' ? +v : v);
+            const nameOf = v => key === 'map' ? Physics.MAPS[v].name.replace(/^The /, '') : names[v];
+            const row = optionRow(title, values, nameOf, key === 'bots' && solo.mode === 'duel' ? 1 : solo[key],
+                key === 'bots' && solo.mode === 'duel', value => {
+                    solo[key] = value;
+                    renderSolo();
+                });
+            rows.appendChild(row);
+        }
+        const alone = isAlone(true);
+        $('oSandbox').disabled = !alone;
+        $('oNote').textContent = alone ? `Any arena, any mode, against bots (${solo.level}: ${LEVELS[solo.level]}). ` +
+            'R restarts the round; Esc leaves.' : 'For when you are the only one in the room.';
+    }
+
+    function openSolo() {
+        closeSettings();
+        renderSolo();
+        $('solo').classList.remove('hidden');
+        Sfx.play('open');
+    }
+
+    function closeSolo() {
+        $('solo').classList.add('hidden');
+    }
+    $('oClose').addEventListener('click', closeSolo);
+    $('oArcade').addEventListener('click', () => {
         send({t: 'arcade'});
-        closeSettings();
+        closeSolo();
     });
-    $('sSandbox').addEventListener('click', () => {
-        const sel = JSON.parse(settingsSel || '{}');
-        send(Object.assign({t: 'sandbox', map: sel.map, target: sel.target}, solo));
-        closeSettings();
+    $('oSandbox').addEventListener('click', () => {
+        send(Object.assign({t: 'sandbox'}, solo, {bots: solo.mode === 'duel' ? 1 : solo.bots}));
+        closeSolo();
     });
     $('sClose').addEventListener('click', closeSettings);
 
@@ -455,5 +486,6 @@ const Hud = (() => {
         init(sender) { send = sender; },
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
         openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo, isControlsOpen, openControls,
+        openSolo, closeSolo, isSoloOpen,
     };
 })();

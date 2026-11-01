@@ -14,7 +14,11 @@ const Sfx = (() => {
         master = ctx.createGain();
         master.gain.value = 0.55;
         const comp = ctx.createDynamicsCompressor();
-        master.connect(comp).connect(ctx.destination);
+        const soft = ctx.createBiquadFilter();        // rounds off the top end: punchy, never shrill
+        soft.type = 'lowpass';
+        soft.frequency.value = 6500;
+        soft.Q.value = 0.5;
+        master.connect(soft).connect(comp).connect(ctx.destination);
         noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
         const d = noiseBuf.getChannelData(0);
         for (let i = 0; i < d.length; i++)
@@ -95,7 +99,7 @@ const Sfx = (() => {
         open: () => { tone('sine', 520, 780, 0.12, 0.14); tone('sine', 780, 1040, 0.12, 0.1, 0.06); },
         siren: () => { tone('sine', 620, 930, 0.32, 0.28); tone('sine', 930, 620, 0.32, 0.2, 0.32); },
         // Bomb Tag
-        tick: () => tone('square', 1500, 1500, 0.03, 0.12),
+        tick: () => tone('triangle', 1200, 1200, 0.03, 0.14),
         tickFast: () => { tone('square', 1900, 1900, 0.03, 0.18); tone('square', 1900, 1900, 0.03, 0.14, 0.25); },
         pass: () => { tone('triangle', 500, 1000, 0.1, 0.25); },
         boom: () => {
@@ -104,14 +108,14 @@ const Sfx = (() => {
         },
         // guarding, grabbing, weapons
         block: () => { tone('triangle', 520, 380, 0.08, 0.25); noise(0.05, 'bandpass', 2500, 1800, 0.2, 3); },
-        parry: () => { tone('triangle', 1320, 1760, 0.18, 0.3); tone('sine', 2640, 2640, 0.25, 0.12, 0.04); },
+        parry: () => { tone('triangle', 1320, 1760, 0.18, 0.28); tone('sine', 1980, 1980, 0.25, 0.1, 0.04); },
         guardbreak: () => { tone('square', 300, 90, 0.3, 0.3); noise(0.25, 'lowpass', 2400, 300, 0.4); },
         grab: () => noise(0.08, 'bandpass', 800, 400, 0.25, 2),
         crate: () => { tone('sine', 660, 880, 0.12, 0.15); tone('sine', 880, 1100, 0.12, 0.12, 0.12); },
         pickup: () => { tone('triangle', 660, 1320, 0.12, 0.2); },
         slash: () => { noise(0.12, 'highpass', 4000, 9000, 0.35); tone('sine', 300, 120, 0.1, 0.4); },
         zap: () => { tone('sawtooth', 1200, 300, 0.15, 0.25); },
-        laser: () => { tone('square', 1800, 400, 0.16, 0.18); },
+        laser: () => { tone('square', 1400, 380, 0.16, 0.14); },
         bounce: () => tone('sine', 420, 300, 0.06, 0.2),
         airhorn: () => {                       // three blasts of a party horn
             for (const d of [0, 0.22, 0.44])
@@ -122,6 +126,11 @@ const Sfx = (() => {
         claim: () => { for (const [f, d] of [[880, 0], [1175, 0.07], [1568, 0.14]]) tone('triangle', f, f, 0.18, 0.16, d); },
         kick: () => { tone('sine', 260, 120, 0.1, 0.4); },
         sizzle: () => { noise(0.5, 'highpass', 3000, 1500, 0.35); tone('sawtooth', 120, 60, 0.3, 0.12); },
+        chime: () => { for (const [f, d] of [[784, 0], [988, 0.08], [1175, 0.16], [1568, 0.24]]) tone('sine', f, f, 0.35, 0.16, d); },
+        stinger: () => {                       // the climax blow: a deep hit under a bright, short ring
+            tone('sine', 90, 30, 0.9, 1.0); noise(0.3, 'lowpass', 900, 80, 0.5);
+            for (const f of [660, 990]) tone('triangle', f, f, 0.5, 0.1, 0.02);
+        },
         bassdrop: () => { tone('sine', 120, 32, 0.7, 1.0); tone('sawtooth', 60, 30, 0.5, 0.15); },
         clash: () => {                         // a parry: two blades meeting, ringing
             for (const f of [1240, 1870, 2650, 3310]) tone('triangle', f, f * 0.995, 0.6, 0.12);

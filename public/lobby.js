@@ -92,7 +92,7 @@ const Lobby = (() => {
     function console_(ctx, t) {
         const {x, y} = ST.console;
         const sel = state.sel || {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: 10};
-        const sw = 640, sh = 250, sx = x - sw / 2, sy = 50;
+        const sw = 640, sh = 276, sx = x - sw / 2, sy = 50;
         ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
         rounded(ctx, sx, sy, sw, sh, 14);
         ctx.fill();
@@ -108,11 +108,11 @@ const Lobby = (() => {
         ctx.font = '700 11px system-ui, sans-serif';
         ctx.fillStyle = '#94a3b8';
         ctx.fillText(`CREATED BY MEHUL  ·  ${state.version || 'v1.2.0-tournament'}  ·  MIT`, sx + 27, sy + 66);
-        const modes = Object.assign({}, MODES, {random: 'Random'});
+        const pickName = (v, names) => v === 'random' ? 'Random' : v === 'shuffle' ? 'Banger Shuffle' : names[v] || '';
         const rows = [
-            ['MODE', modes[sel.mode], '#22d3ee'],
+            ['MODE', pickName(sel.mode, MODES), '#22d3ee'],
             ['MATCH', `First to ${sel.target}  ·  ${sel.timer ? sel.timer + ' s rounds' : 'no timer'}`],
-            ['MAP', sel.map === 'random' ? 'Random' : MAPS[sel.map].name],
+            ['MAP', pickName(sel.map, Object.fromEntries(Object.entries(MAPS).map(([k, m]) => [k, m.name])))],
             ['WEAPONS', sel.weapons ? 'On' : 'Off'],
             ['PLAYERS READY', `${state.ready || 0} / ${sel.limit || state.max || 10}`],
         ];
@@ -126,6 +126,15 @@ const Lobby = (() => {
             ctx.fillStyle = accent || '#e5e7eb';
             ctx.fillText(v, rx, ry + 19);
         });
+        // the footer: this game's repo, and the workstation setup it ships with
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
+        ctx.fillRect(sx + 26, sy + sh - 34, sw - 52, 1);
+        ctx.font = '700 10px ui-monospace, monospace';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('⚡ github.com/MehulK-techie/stick-havoc', sx + 26, sy + sh - 15);
+        ctx.textAlign = 'right';
+        ctx.fillText('🐧 MK Linux Workstation · fedora-workstation-config', sx + sw - 26, sy + sh - 15);
+        ctx.textAlign = 'left';
         if (qr) {
             const n = qr.length, cell = Math.floor(150 / n), size = cell * n, qx = sx + sw - size - 32, qy = sy + 30;
             ctx.fillStyle = '#f8fafc';

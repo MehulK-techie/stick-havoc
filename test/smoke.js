@@ -15,7 +15,7 @@ srv.stderr.on('data', d => process.stderr.write(d));
 process.on('exit', () => srv.kill());                 // never leave a server holding the port
 process.on('uncaughtException', e => { console.error(e); srv.kill(); process.exit(1); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-let seen = new Set(), last = null, failures = 0;
+let seen = new Set(), last = null, failures = 0, evs = [];
 
 function client(name) {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
@@ -27,7 +27,10 @@ function client(name) {
         if (m.type === 'near') c.near = m.station;
         if (m.type === 's') {
             last = m;
-            for (const e of m.ev) seen.add(e.type);
+            for (const e of m.ev) {
+                seen.add(e.type);
+                evs.push(e);
+            }
         }
     });
     c.send = o => ws.readyState === 1 && ws.send(JSON.stringify(o));
@@ -243,8 +246,34 @@ async function brawl(fighters, ms) {
     await sleep(1500);
     check('and the room keeps running', srv.exitCode === null && last.scene === 'lobby');
     e.ws.close();
+    // ---------------- Banger Shuffle: settled on the server before anyone is told
+    b.send({t: 'settings', key: 'mode', value: 'shuffle'}); b.send({t: 'settings', key: 'map', value: 'shuffle'});
+    await sleep(200);
+    evs = [];
+    b.send({t: 'console', do: 'start'});
+    await until(() => evs.some(x => x.type === 'match'), 6000);
+    const st = evs.find(x => x.type === 'starting'), mt = evs.find(x => x.type === 'match');
+    check('Banger Shuffle: the countdown names a real mode and map', st && P.MODES[st.mode] && P.ARENAS.includes(st.map));
+    check('and the match is that one', mt && last.scene === 'match' && mt.mode === st.mode && mt.map === st.map &&
+        last.map === st.map);
+    b.send({t: 'lobby'});
+    await until(() => last.scene === 'lobby', 3000);
+    // ---------------- the 1P sandbox: only for someone alone in the room
+    const solo = {t: 'sandbox', mode: 'rumble', level: 'hard', crates: 'frequent', map: 'shuffle', target: 3};
+    b.send(solo);
+    await sleep(400);
+    check('the sandbox is refused with two in the room', last.scene === 'lobby');
+    c.ws.close();
+    await sleep(400);
+    b.send(solo);
+    check('alone: the sandbox starts, FFA against 3 bots on a real map', await until(() => last.scene === 'match' &&
+        last.sandbox, 3000) && P.ARENAS.includes(last.map) && last.act.length === 4 &&
+        b.roster.list.filter(p => p.bot).length === 3);
+    b.send({t: 'lobby'});
+    check('Esc / the corner button: back to the lobby, the bots gone', await until(() => last.scene === 'lobby' &&
+        !b.roster.list.some(p => p.bot), 3000));
     console.log(failures ? `\n${failures} failed` : '\nall passed');
-    for (const x of [b, c]) x.ws.close();
+    b.ws.close();
     srv.kill();
     process.exit(failures ? 1 : 0);
 })();

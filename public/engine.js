@@ -10,6 +10,7 @@
     // ------------------------------------------------------------ state
     let ws = null, myId = null, hostId = null, choices = null, scene = 'lobby';
     let sparring = false;               // practice against the bot, simulated in this browser (spar.js)
+    let sandbox = false;                // a 1P sandbox match is on (Esc goes back to the lobby)
     let serverNear = null;              // the station the server says you stand at (kept through sparring)
     let roster = new Map();             // id -> {name, color, gear, wins, bot}
     let snaps = [];                     // [{at, s}] newest last
@@ -85,6 +86,7 @@
     }
 
     function onSnapshot(s) {
+        sandbox = !!s.sandbox && s.scene === 'match';
         snaps.push({at: performance.now(), s});
         while (snaps.length > 8)
             snaps.shift();
@@ -271,6 +273,11 @@
             Sfx.play('crate');
             break;
         case 'pickup':
+            if (ev.air) {                             // snatched out of the air: the parachute pops
+                burst(ev.x, ev.y - 30, '#e5e7eb', 22, 420);
+                ring(ev.x, ev.y - 30, '#f8fafc');
+                Sfx.play('kick');
+            }
             if (ev.id === myId) {
                 Hud.toast(`${Weapons.KINDS[ev.kind].name}: J to use it, E to throw it`);
                 Touch.buzz(20);
@@ -313,9 +320,19 @@
                 Touch.buzz(90);
             Sfx.play('ko');
             break;
-        case 'slowmo':
-            cam.slow = 1.2; cam.slowX = ev.x; cam.slowY = ev.y;
+        case 'clash':                             // the climax: 0.15x, the camera closes in on the two of them
+            cam.slow = 2; cam.slowX = ev.x; cam.slowY = ev.y;
             Sfx.play('slowmo');
+            break;
+        case 'clashWin':                          // the first blow in: a gold starburst and a deep stinger
+            starburst(ev.x, ev.y, '#facc15');
+            ring(ev.x, ev.y, '#fde68a');
+            burst(ev.x, ev.y, '#facc15', 40, 900);
+            cam.slow = 0; cam.flash = 1; cam.shake = 30;
+            Sfx.play('stinger');
+            break;
+        case 'clashEnd':
+            cam.slow = 0;
             break;
         case 'wallbounce':
             burst(ev.x, ev.y, '#e5e7eb', 14, 600);
@@ -414,8 +431,9 @@
         case 'hazardEnd':
             Hud.toast(`${HAZARDS[ev.hazard]} is over`);
             break;
-        case 'starting':
-            Hud.toast(`${MODES[ev.mode]} on ${MAPS[ev.map].name}: get ready`);
+        case 'starting':                          // (the server names the real mode and map, never Random or Shuffle)
+            if (MODES[ev.mode] && MAPS[ev.map])
+                Hud.toast(`${MODES[ev.mode]} on ${MAPS[ev.map].name}: get ready`);
             break;
         case 'match':
             cam.z = 0.7; cam.y = H * 0.8;        // a sweep in to the new stage
@@ -437,6 +455,14 @@
             }
             banner('GOAL!', '#facc15', 1.3, 110);
             Sfx.play('airhorn');
+            Sfx.play('chime');
+            for (let i = 0; i < 3; i++)                // fireworks over the net
+                setTimeout(() => {
+                    const fx = ev.x - 60 - Math.random() * 160, fy = ev.y - 160 - Math.random() * 120;
+                    burst(fx, fy, `hsl(${Math.random() * 360}, 90%, 65%)`, 30, 520);
+                    ring(fx, fy, '#fde68a');
+                    Sfx.play('firework');
+                }, 250 + i * 280);
             break;
         case 'climb':
             Lobby.pop({text: `CLIMB TIME: ${ev.t.toFixed(2)}s`, x: ev.x, y: ev.y - 120, big: true, color: '#facc15'});
@@ -495,6 +521,12 @@
 
     function ring(x, y, color) {
         particles.push({k: 'ring', x, y, life: 0, max: 0.55, color, size: 10});
+    }
+
+    function starburst(x, y, color) {
+        for (let i = 0; i < 24; i++)
+            particles.push({k: 'ray', x, y, a: i / 24 * Math.PI * 2 + Math.random() * 0.1, life: 0, max: 0.5,
+                color, size: i % 2 ? 2 : 4});
     }
 
     function banner(text, color, dur, size, style) {
@@ -1036,6 +1068,17 @@
         for (const p of particles) {
             p.life += dt;
             const a = Math.max(0, 1 - p.life / p.max);
+            if (p.k === 'ray') {                      // a starburst ray: a spoke shooting out from the centre
+                const r0 = 30 + p.life * 1400, r1 = r0 + 60 + p.size * 30;
+                ctx.strokeStyle = p.color;
+                ctx.globalAlpha = a;
+                ctx.lineWidth = p.size * a + 1;
+                ctx.beginPath();
+                ctx.moveTo(p.x + Math.cos(p.a) * r0, p.y + Math.sin(p.a) * r0);
+                ctx.lineTo(p.x + Math.cos(p.a) * r1, p.y + Math.sin(p.a) * r1);
+                ctx.stroke();
+                continue;
+            }
             if (p.k === 'ring') {
                 ctx.strokeStyle = p.color;
                 ctx.globalAlpha = a * 0.8;
@@ -1320,8 +1363,11 @@
             return;
         }
         if (e.code === 'Escape') {
+            const menu = Hud.isSettingsOpen() || !document.getElementById('moves').classList.contains('hidden');
             Hud.toggleMoves(false);
             Hud.closeSettings();
+            if (sandbox && !menu && !e.repeat)     // nothing to close: Esc leaves the sandbox
+                sendMsg({t: 'lobby'});
             return;
         }
         if (Hud.isSettingsOpen()) {

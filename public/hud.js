@@ -229,7 +229,40 @@ const Hud = (() => {
         limit: ['Player limit', null],
         map: ['Map', null],
     };
-    let choices = null, settingsHost = false, settingsSel = null;
+    let choices = null, settingsHost = false, settingsSel = null, settingsAlone = false;
+    // the 1P sandbox's own picks (only the one person in the room sees them; the map and length come from above)
+    const SOLO = {
+        mode: ['Mode', {duel: '1v1 Duel', rumble: 'FFA · 3 bots', bomb: 'Bomb Tag', lava: 'Floor Is Lava'}],
+        level: ['Bots', {easy: 'Easy', normal: 'Normal', hard: 'Hard'}],
+        crates: ['Weapon crates', {off: 'Off', normal: 'Normal', frequent: 'Frequent'}],
+    };
+    const solo = {mode: 'duel', level: 'normal', crates: 'normal'};
+
+    const isAlone = isHost => !!(isHost && typeof Lobby !== 'undefined' && Lobby.state.ready === 1);
+
+    // a settings row: a label, and a button per choice with the current one lit
+    function optionRow(title, values, nameOf, current, disabled, onPick) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = title;
+        const opts = document.createElement('div');
+        opts.className = 'opts';
+        for (const value of values) {
+            const b = document.createElement('button');
+            b.textContent = nameOf(value);
+            b.classList.toggle('on', current === value);
+            b.disabled = disabled;
+            b.addEventListener('click', () => {
+                onPick(value);
+                Sfx.play('ui');
+            });
+            opts.appendChild(b);
+        }
+        row.append(label, opts);
+        return row;
+    }
 
     function openSettings(sel, isHost, ch) {
         choices = ch;
@@ -250,34 +283,29 @@ const Hud = (() => {
         const rows = $('sRows');
         rows.textContent = '';
         for (const [key, [title, names]] of Object.entries(LABELS)) {
-            const row = document.createElement('div');
-            row.className = 'row';
-            const label = document.createElement('span');
-            label.className = 'label';
-            label.textContent = title;
-            const opts = document.createElement('div');
-            opts.className = 'opts';
-            for (const value of choices[key]) {
-                const b = document.createElement('button');
-                b.textContent = names ? names[value] : key === 'map' ? (value === 'random' ? 'Random' :
-                    value === 'shuffle' ? 'Banger Shuffle' :
-                    Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
-                b.classList.toggle('on', sel[key] === value);
-                b.disabled = !isHost;
-                b.addEventListener('click', () => {
-                    send({t: 'settings', key, value});
-                    Sfx.play('ui');
-                });
-                opts.appendChild(b);
-            }
-            row.append(label, opts);
-            rows.appendChild(row);
+            const nameOf = value => names ? names[value] : key === 'map' ? (value === 'random' ? 'Random' :
+                value === 'shuffle' ? 'Banger Shuffle' : Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
+            rows.appendChild(optionRow(title, choices[key], nameOf, sel[key], !isHost,
+                value => send({t: 'settings', key, value})));
+        }
+        // alone in the room: the sandbox, against bots, on any map
+        const alone = isAlone(isHost);
+        settingsAlone = alone;
+        $('sSolo').classList.toggle('hidden', !alone);
+        const soloRows = $('sSoloRows');
+        soloRows.textContent = '';
+        for (const [key, [title, names]] of Object.entries(SOLO)) {
+            soloRows.appendChild(optionRow(title, Object.keys(names), v => names[v], solo[key], false, value => {
+                solo[key] = value;
+                renderSettings(sel, isHost);
+            }));
         }
     }
 
     // the snapshot's settings changed (the host clicked): redraw what everyone sees
     function syncSettings(sel, isHost) {
-        if (isSettingsOpen() && (JSON.stringify(sel) !== settingsSel || isHost !== settingsHost))
+        if (isSettingsOpen() && (JSON.stringify(sel) !== settingsSel || isHost !== settingsHost ||
+            isAlone(isHost) !== settingsAlone))
             renderSettings(sel, isHost);
     }
 
@@ -292,6 +320,11 @@ const Hud = (() => {
     });
     $('sArcade').addEventListener('click', () => {
         send({t: 'arcade'});
+        closeSettings();
+    });
+    $('sSandbox').addEventListener('click', () => {
+        const sel = JSON.parse(settingsSel || '{}');
+        send(Object.assign({t: 'sandbox', map: sel.map, target: sel.target}, solo));
         closeSettings();
     });
     $('sClose').addEventListener('click', closeSettings);

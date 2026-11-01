@@ -3,7 +3,8 @@
 // Walks a player through it with real key presses: lobby.png, drawer.png
 // (the wardrobe), settings.png (the host console), moves.png, spar.png
 // (practice bot), match.png (the Magma Foundry), ko.png (the K.O. cinematic),
-// podium.png (the winner's card), phone.png (touch controls).
+// podium.png (the winner's card), sandbox.png (a 1P sandbox match), rig.png (ledge grip, mantle, landing
+// crouch, drawn close up), phone.png (touch controls).
 'use strict';
 const {spawn} = require('child_process');
 const fs = require('fs'), os = require('os'), path = require('path');
@@ -97,6 +98,41 @@ async function shot(ctx, name) {
             await sleep(900);
             await shot(ctx, 'podium.png');
         }
+        // the 1P sandbox: back in the lobby, alone, FFA against three bots
+        if (await waitFor(`!document.body.classList.contains('in-match')`, 20000)) {
+            await sleep(1500);
+            await js(`Hud.openSettings(Lobby.state.sel, true, {mode: [], map: [], target: [], timer: [], weapons: [], limit: []})`);
+            await sleep(400);
+            await js(`[...document.querySelectorAll('#sSoloRows button')].find(b => b.textContent === 'FFA · 3 bots').click()`);
+            await sleep(200);
+            await shot(ctx, 'solo.png');
+            await js(`document.getElementById('sSandbox').click()`);
+            await sleep(8000);
+            await shot(ctx, 'sandbox.png');
+            await tap('\uE00C');          // Esc: leaves the sandbox
+            await sleep(1500);
+        }
+        // the rig close up: hanging from both edges, the mantle, the landing crouch
+        await js(`(() => {
+            const c = document.createElement('canvas'); c.width = 1280; c.height = 720;
+            c.style.cssText = 'position:fixed;inset:0;z-index:99;background:#0b0f17';
+            document.body.appendChild(c);
+            const g = c.getContext('2d'); g.scale(1.6, 1.6);
+            const {HANG, GRIP} = Physics, top = 150;
+            const plat = (x, w) => { g.fillStyle = '#334155'; g.fillRect(x, top, w, 14); g.fillStyle = '#94a3b8'; g.fillRect(x, top, w, 2); };
+            const rig = (f, t) => Physics.drawRig(g, Object.assign({vx: 0, inv: 0, gear: {}}, f), t);
+            plat(20, 110); rig({x: 130 + GRIP, y: top + HANG, face: -1, st: 'ledge', color: '#22d3ee'}, 0.3);
+            plat(230, 110); rig({x: 230 - GRIP, y: top + HANG, face: 1, st: 'ledge', color: '#f472b6'}, 1.1);
+            for (const [i, k] of [[0, 0.2], [1, 0.55]]) {
+                const px = 390 + i * 150, m = Physics.mantlePath(k);
+                plat(px, 110); rig({x: px + m.fx, y: top + m.dy, face: 1, st: 'mantle', ap: k, color: '#a3e635'}, 0);
+            }
+            g.fillStyle = '#334155'; g.fillRect(20, 400, 740, 14);
+            rig({x: 120, y: 400, face: 1, st: 'land', color: '#facc15'}, 0);
+            rig({x: 260, y: 400, face: 1, st: 'idle', color: '#e5e7eb'}, 0);
+        })()`);
+        await sleep(300);
+        await shot(ctx, 'rig.png');
         // a phone, sideways, with the touch pads
         await call('browsingContext.setViewport', {context: ctx, viewport: {width: 860, height: 412}});
         await call('browsingContext.navigate', {context: ctx, url: 'http://127.0.0.1:3998/?name=Phone&touch=1', wait: 'complete'});

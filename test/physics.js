@@ -29,11 +29,19 @@ function run(w, frames, inputs) {
     check('jab, hook, straight in order', kinds.slice(0, 3).join() === 'jab,hook,straight');
     check('the jab starts on frame 4', Math.abs(P.MOVES.jab.from - 4 / 60) < 1e-9);
 }
-{   // both under 25 %, both swinging, close: slow motion
+{   // the climax: both under 25 %, facing, swinging 33 ms apart: 0.15x, and the first blow to connect wins it
     const w = world(); const a = fighter(w, 1, 800), b = fighter(w, 2, 860);
     a.hp = b.hp = 20; a.face = 1; b.face = -1;
-    const ev = run(w, 3, i => i === 0 ? {1: {k: P.IN.LIGHT}, 2: {k: P.IN.LIGHT}} : {});
-    check('slow motion when both are low and trading blows', ev.some(e => e.type === 'slowmo') && w.timeScale < 1);
+    // a throws the slow uppercut first; b's jab, 33 ms later, is live sooner
+    const ev = run(w, 2, i => i === 0 ? {1: {k: P.IN.HEAVY}} : {2: {k: P.IN.LIGHT}});
+    check('a clash drops to 0.15x', ev.some(e => e.type === 'clash') && w.timeScale === 0.15 && w.clash);
+    const ev2 = run(w, 40, {});
+    check('the first blow to connect wins: the other is knocked out, game speed back to 1x',
+        ev2.some(e => e.type === 'clashWin' && e.by === 2) && a.st === 'ko' && b.st !== 'ko' && w.timeScale === 1 && !w.clash);
+    const w2 = world(); const c = fighter(w2, 1, 800), d = fighter(w2, 2, 860);
+    c.face = 1; d.face = -1;
+    const ev3 = run(w2, 2, i => i === 0 ? {1: {k: P.IN.LIGHT}} : {2: {k: P.IN.LIGHT}});
+    check('no clash at full health', !ev3.some(e => e.type === 'clash') && w2.timeScale === 1);
 }
 {   // the uppercut (K, or Up+J) launches; punches keep them up (a juggle)
     const w = world('reactor'); const a = fighter(w, 1, 800), b = fighter(w, 2, 850); a.face = 1;
@@ -320,6 +328,65 @@ function run(w, frames, inputs) {
     check('a knockout freezes, then runs at 0.25x', w.koSlow > 0 && w.timeScale < 0.6);
     const ev = run(w, 120, {});
     check('the body bounces once and settles', ev.filter(e => e.type === 'thud' && e.id === 2).length === 1 && b.rest);
+}
+{   // a launched ragdoll lands flat on the top: clamped, a short crouch, back up; never into or through a floor
+    const w = world('reactor'); const f = fighter(w, 1, 800, 300);
+    Object.assign(f, {ground: false, st: 'tumble', vy: 1500, vx: 200, stun: 0.6, spinV: 13});
+    let deepest = -Infinity, landed = null;
+    for (let i = 0; i < 40; i++) {
+        run(w, 1, {});
+        if (f.ground && !landed) landed = {y: f.y, vy: f.vy, st: f.st, plat: f.plat};
+        if (landed) deepest = Math.max(deepest, f.y - landed.plat.y);
+    }
+    check('a ragdoll lands clamped to the top, in a crouch', landed && landed.vy === 0 && landed.st === 'land' && deepest <= 0);
+    check('and is back on its feet after the crouch', f.st === 'idle' && f.spin === 0);
+    let through = 0;                               // the foundry's moving plates: rising into falling bodies
+    for (let n = 0; n < 300; n++) {
+        const m = world('magma'); m.time = n * 0.037;
+        run(m, 1, {});                             // (the plate moves to where this moment puts it)
+        const plate = m.plats.find(p => p.move && p.move.axis === 'y');
+        const g = fighter(m, 1, plate.x + 30 + (n % 7) * 25, plate.y - 60 - (n % 5) * 40);
+        Object.assign(g, {ground: false, st: 'tumble', vy: (n % 9) * 180, stun: 0.6});
+        for (let i = 0; i < 60; i++) {
+            const above = g.y <= plate.y + 1, inside = g.x > plate.x + 8 && g.x < plate.x + plate.w - 8;
+            run(m, 1, {});
+            if (above && inside && g.x > plate.x + 8 && g.x < plate.x + plate.w - 8 && g.y > plate.y + 4 && !g.ledge) {
+                through++;
+                break;
+            }
+        }
+    }
+    check('a moving plate catches a falling body (no phasing through)', through === 0);
+}
+{   // hanging: the hands on the corner; J: a hop kick over the lip; hit while hanging: punished and knocked off
+    const hang = () => {
+        const w = world('reactor'); const f = fighter(w, 1, 162, 700); f.ground = false; f.vy = 300; f.st = 'air';
+        run(w, 8, {});
+        return {w, f, p: w.plats[f.ledge.p], side: f.ledge.side};
+    };
+    const {w, f, p, side} = hang(), edge = side < 0 ? p.x : p.x + p.w;
+    check('the hang puts the hands on the corner', f.st === 'ledge' && f.x === edge + side * P.GRIP && f.y === p.y + P.HANG);
+    const o = fighter(w, 2, edge - side * 26, p.y); o.face = side;
+    const ev = run(w, 10, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    check('J: the ledge hop kick hits whoever is on the lip, and lands on top', ev.some(e => e.type === 'hit' &&
+        e.kind === 'ledgekick' && e.power === 16) && o.st === 'tumble' && f.ground && f.plat === p);
+    const h = hang(); h.f.inv = 0;
+    const ed = h.side < 0 ? h.p.x : h.p.x + h.p.w;
+    const q = fighter(h.w, 2, ed - h.side * 10, h.p.y); q.face = h.side;
+    const ev2 = run(h.w, 2, i => ({2: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    check('a hit on a hanging player: 1.3x damage, knocked off and down', ev2.some(e => e.type === 'callout' &&
+        e.text === 'LEDGE PUNISH!') && h.f.hp === 100 - Math.round(P.MOVES.jab.dmg * 1.3) && !h.f.ledge && h.f.st === 'tumble');
+}
+{   // a falling crate: E or an aerial strike takes it out of the air
+    const w = world('colosseum'); const f = fighter(w, 1, 800, 560); f.ground = false; f.st = 'air'; f.vy = 0;
+    w.crates.push({x: 800, y: 500, kind: 'bat', landed: false, life: 20});
+    const ev = run(w, 1, {1: {k: P.IN.USE}});
+    check('E in mid-air: the crate pops and the weapon is in hand, with a bounce', f.weapon && f.weapon.kind === 'bat' &&
+        !w.crates.length && f.vy < 0 && ev.some(e => e.type === 'pickup' && e.air));
+    const w2 = world('colosseum'); const g = fighter(w2, 1, 770, 560); g.ground = false; g.st = 'air'; g.vy = 0; g.face = 1;
+    w2.crates.push({x: 810, y: 530, kind: 'katana', landed: false, life: 20});
+    run(w2, 6, i => ({1: {k: i === 0 ? P.IN.HEAVY : 0}}));
+    check('a flying kick smashes it open: weapon in hand', g.weapon && g.weapon.kind === 'katana' && !w2.crates.length);
 }
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

@@ -74,9 +74,15 @@ const sel = {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, 
 const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'lava', 'random', 'shuffle'], map: [...P.ARENAS, 'random', 'shuffle'],
     target: [3, 5, 7], timer: [45, 60, 90, 0], weapons: [true, false],
     limit: Array.from({length: MAX_PLAYERS - 1}, (_, i) => i + 2)};
-// Banger Shuffle: weighted picks; never the same mode or map twice running, no pair from the last 3 matches
+// Banger Shuffle: weighted picks; never the last mode again, never one of the last 2 maps
 const SHUFFLE_WEIGHTS = {koth: 3, rumble: 3, bomb: 2, lava: 2};
-const history = [];                   // [{mode, map}], newest last
+const history = [];                   // the last 2 matches, [{mode, map}], newest last
+// the 1P sandbox: any map, a mode against bots, how hard they are, how often crates fall
+const SANDBOX = {
+    mode: {duel: 'koth', rumble: 'rumble', bomb: 'bomb', lava: 'lava'},
+    level: {easy: ['rookie', 'acrobat', 'rookie'], normal: ['brawler', 'acrobat', 'training'], hard: ['ninja', 'brawler', 'boss']},
+    crates: {off: 0, normal: 1, frequent: 3},
+};
 let lastHost = null;
 let lobbyGoals = 0;                   // the lobby's football score, kept for the whole session
 let climbRecord = null;               // the parkour tower's best: {t, name}
@@ -145,6 +151,8 @@ function addBot(style) {
 
 // alone in King of the Hill, you spar with the training bot until a second person is in
 function ensureBot() {
+    if (match && match.sandbox)              // (the sandbox brought its own)
+        return;
     const bots = [...players.values()].filter(p => p.bot && p.bot.style === 'training');
     const want = scene === 'match' && match.mode === 'koth' && humans().length === 1;
     if (want && !bots.length) {
@@ -169,36 +177,50 @@ function weighted(weights) {
     return Object.keys(weights)[0];
 }
 
-function bangerShuffle() {
+// the settings as a real mode and map: Random and Banger Shuffle are picked here, on the server, before anyone
+// is told, so no client is ever handed 'shuffle' to look up
+function resolvePick(want = sel) {
     const last = history[history.length - 1] || {};
-    const recent = history.slice(-3).map(h => `${h.mode}/${h.map}`);
-    for (let tries = 0; tries < 50; tries++) {
-        const w = Object.fromEntries(Object.entries(SHUFFLE_WEIGHTS).filter(([k]) => k !== last.mode));
-        const mode = sel.mode === 'shuffle' ? weighted(w) : null;
-        const maps = P.ARENAS.filter(m => m !== last.map);
-        const map = sel.map === 'shuffle' ? pick(maps) : null;
-        if (!recent.includes(`${mode}/${map}`))
-            return {mode, map};
-    }
-    return {mode: weighted(SHUFFLE_WEIGHTS), map: pick(P.ARENAS)};
+    const recentMaps = history.map(h => h.map);
+    const modes = Object.fromEntries(Object.entries(SHUFFLE_WEIGHTS).filter(([k]) => k !== last.mode));
+    const mode = want.mode === 'random' ? pick(Object.keys(P.MODES)) : want.mode === 'shuffle' ? weighted(modes) : want.mode;
+    const fresh = P.ARENAS.filter(m => !recentMaps.includes(m));
+    const map = want.map === 'random' ? pick(P.ARENAS) : want.map === 'shuffle' ? pick(fresh.length ? fresh : P.ARENAS) : want.map;
+    return {mode: P.MODES[mode] ? mode : 'koth', map: P.MAPS[map] && map !== 'lobby' ? map : P.ARENAS[0]};
 }
 
-function startMatch() {
-    const ids = humans().map(p => p.id);
-    const shuffled = bangerShuffle();
-    const mode = sel.mode === 'random' ? pick(Object.keys(P.MODES)) : sel.mode === 'shuffle' ? shuffled.mode : sel.mode;
-    const map = sel.map === 'random' ? pick(P.ARENAS) : sel.map === 'shuffle' ? shuffled.map : sel.map;
+function newMatch(mode, map, extra) {
     history.push({mode, map});
-    if (history.length > 3)
+    if (history.length > 2)
         history.shift();
-    match = {mode, map, world: null, phase: 'countdown', phaseT: 0, queue: [], active: [], target: sel.target,
+    return Object.assign({mode, map, world: null, phase: 'countdown', phaseT: 0, queue: [], active: [], target: sel.target,
         timeLimit: sel.timer, clock: 0, weapons: sel.weapons,
         roundWins: new Map(), bomb: null, voteClock: 0, vote: null, round: 0, winner: null, champion: null,
-        bestCombo: new Map(), finisher: null};
+        bestCombo: new Map(), finisher: null}, extra);
+}
+
+function startMatch(picked) {
+    const ids = humans().map(p => p.id);
+    const {mode, map} = picked || resolvePick();
+    match = newMatch(mode, map);
     if (match.mode === 'koth')
         match.queue = ids.slice();
     scene = 'match';
     ensureBot();
+    startRound();
+    pendingEvents.push({type: 'match', mode: match.mode, map: match.map, name: P.MAPS[match.map].name});
+}
+
+// 1P sandbox: the one person here picks a map and a mode, and bots fill the arena
+function startSandbox(playerId, o) {
+    const {map} = resolvePick({mode: 'koth', map: o.map});
+    const styles = SANDBOX.level[o.level];
+    match = newMatch(SANDBOX.mode[o.mode], map, {target: o.target, weapons: SANDBOX.crates[o.crates] > 0,
+        sandbox: {player: playerId, crates: SANDBOX.crates[o.crates]}});
+    const bots = styles.slice(0, o.mode === 'duel' ? 1 : 3).map(style => addBot(style));
+    if (match.mode === 'koth')
+        match.queue = [playerId, ...bots];
+    scene = 'match';
     startRound();
     pendingEvents.push({type: 'match', mode: match.mode, map: match.map, name: P.MAPS[match.map].name});
 }
@@ -210,6 +232,7 @@ function startRound() {
     m.world.noDamage = m.mode === 'bomb';
     m.world.floorLava = m.world.airReset = m.mode === 'lava';
     m.world.weapons = m.weapons || (m.mode === 'arcade' && m.arcade.stage >= 3);
+    m.world.crateRate = m.sandbox ? m.sandbox.crates : 1;
     m.round++;
     m.clock = 0;
     m.winner = null;
@@ -235,6 +258,9 @@ function startRound() {
     });
     if (m.mode === 'bomb')
         m.bomb = null;
+    // match point for both of the two in the ring: the climax clash comes in at half health
+    m.world.matchPoint = m.active.length === 2 && m.mode !== 'bomb' &&
+        m.active.every(id => (m.roundWins.get(id) || 0) >= m.target - 1);
     setPhase(m.active.length >= 2 ? 'countdown' : 'waiting');
     roster();
 }
@@ -315,6 +341,7 @@ function nextArcadeStage() {
 // the winner's card: rounds won and the best of the rest, the longest combo, the move that ended it
 const MOVE_NAMES = {jab: 'Jab', hook: 'Body Hook', straight: 'Straight', uppercut: 'Uppercut', airkick: 'Flying Kick',
     dive: 'Dive Kick', lunge: 'Lunging Straight', sweep: 'Low Sweep', pound: 'Ground Pound', grab: 'Throw',
+    ledgekick: 'Ledge Hop Kick',
     katana: 'Katana', bat: 'Home-Run Bat', laser: 'Laser Blaster', grenade: 'Bouncy Bomb', thrown: 'Thrown Weapon'};
 
 function championStats(m) {
@@ -469,7 +496,7 @@ function lobbyTick(dt) {
         if (lobby.starting <= 0) {
             delete lobby.starting;
             if (humans().length >= 1)
-                startMatch();
+                startMatch(lobby.picked);
         }
     }
 }
@@ -573,7 +600,7 @@ function snapshot() {
         tl: m && m.timeLimit ? Math.max(0, Math.ceil(m.timeLimit - m.clock)) : null,
         arcade: m && m.arcade ? {stage: m.arcade.stage + 1, of: Bot.LADDER.length, player: m.arcade.player,
             t: Math.round((Date.now() - m.arcade.t0) / 1000)} : null,
-        target: m ? m.target : sel.target, version: VERSION,
+        target: m ? m.target : sel.target, version: VERSION, sandbox: !!(m && m.sandbox),
         an: w.anvils.map(a => [Math.round(a.x), Math.round(a.y)]),
         q: m ? m.queue : [], act: m ? m.active : [],
         wins: m ? [...m.roundWins] : [],
@@ -586,7 +613,7 @@ const clean = s => String(s || '').replace(/[^\p{L}\p{N} _.\-!?]/gu, '').trim().
 
 function removePlayer(id) {
     players.delete(id);
-    if (match && match.arcade && match.arcade.player === id) {   // the arcade player left: it's over
+    if (match && (match.arcade || match.sandbox) && (match.arcade || match.sandbox).player === id) {   // the solo player left
         backToLobby();
         return roster();
     }
@@ -704,6 +731,10 @@ wss.on('connection', ws => {
             pendingEvents.push({type: 'console'});
         } else if (m.t === 'arcade' && isHost && scene === 'lobby' && lobby.starting === undefined) {
             startArcade(id);
+        } else if (m.t === 'sandbox' && isHost && scene === 'lobby' && lobby.starting === undefined &&
+            humans().length === 1 && Object.hasOwn(SANDBOX.mode, m.mode) && Object.hasOwn(SANDBOX.level, m.level) &&
+            Object.hasOwn(SANDBOX.crates, m.crates) && CHOICES.map.includes(m.map) && CHOICES.target.includes(m.target)) {
+            startSandbox(id, m);
         } else if (m.t === 'console' && isHost && scene === 'lobby' && (me.near === 'console' || m.do === 'start')) {
             // the host's console: Q cycles the mode, Tab the map, Start starts
             if (m.do === 'mode') {
@@ -712,7 +743,8 @@ wss.on('connection', ws => {
                 sel.map = CHOICES.map[(CHOICES.map.indexOf(sel.map) + 1) % CHOICES.map.length];
             } else if (m.do === 'start' && lobby.starting === undefined) {
                 lobby.starting = 3;
-                pendingEvents.push({type: 'starting', mode: sel.mode, map: sel.map});
+                lobby.picked = resolvePick();          // (Random and Shuffle settled now: the toast names the real ones)
+                pendingEvents.push({type: 'starting', mode: lobby.picked.mode, map: lobby.picked.map});
             }
             pendingEvents.push({type: 'console'});
         } else if (m.t === 'lobby' && isHost && scene === 'match') {

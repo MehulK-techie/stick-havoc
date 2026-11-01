@@ -13,7 +13,11 @@
 <!-- the creator's badge (lobby) and the moves button (always) -->
 <header id="brand" class="panel">
   <div class="b1">⚡ STICK HAVOC <span class="sep">·</span> CREATED BY MEHUL</div>
-  <div class="b2"><a href="https://github.com/MehulK-techie/stick-havoc" target="_blank" rel="noopener">GitHub: MehulK-techie/stick-havoc</a></div>
+  <div class="b2">
+    <a class="pill" href="https://github.com/MehulK-techie/stick-havoc" target="_blank" rel="noopener noreferrer">🎮 Game Repo</a>
+    <a class="pill" href="https://github.com/MehulK-techie/fedora-workstation-config" target="_blank" rel="noopener noreferrer"
+       title="🐧 MK Linux Workstation: the Fedora setup this game ships with">🐧 Dotfiles / OS Setup</a>
+  </div>
   <div class="b3"><span class="tag" id="ver">v1.2.0-tournament</span><span class="tag">MIT License</span></div>
 </header>
 <button id="movesBtn" class="panel" title="Move list (Shift)">? <span class="txt">Moves</span> <kbd>Shift</kbd></button>
@@ -64,6 +68,8 @@
     <tr><td><kbd>L</kbd></td><td>Dash: 10 invulnerable frames; cancels a punch's recovery</td></tr>
     <tr><td><kbd>E</kbd></td><td>Pick up a crate's weapon; with one in hand, throw it. <kbd>J</kbd> uses it</td></tr>
     <tr><td><kbd>W</kbd> twice · at a wall</td><td>Double jump · wall kick</td></tr>
+    <tr><td>hanging: <kbd>W</kbd> · <kbd>J</kbd> · <kbd>S</kbd></td><td>Climb up · hop kick over the lip (16) · let go</td></tr>
+    <tr><td><kbd>E</kbd> at a falling crate</td><td>Snatch its weapon out of the air (an air attack works too)</td></tr>
   </table>
   <p class="sub">Hitting someone in the middle of their attack is a <b>COUNTER</b> (+25%).</p>
 </div>
@@ -75,6 +81,12 @@
   <div id="sRows"></div>
   <button id="sStart" class="primary">Start match <kbd>Enter</kbd></button>
   <button id="sArcade">1P Arcade ladder</button>
+  <section id="sSolo" class="hidden" aria-label="1P solo match and map sandbox">
+    <h3>1P Solo Match / Map Sandbox</h3>
+    <p class="sub">The map and match length above, against bots. <kbd>Esc</kbd> leaves at any time.</p>
+    <div id="sSoloRows"></div>
+    <button id="sSandbox" class="primary">Start sandbox match</button>
+  </section>
   <button id="sClose">Close <kbd>Esc</kbd></button>
 </aside>
 

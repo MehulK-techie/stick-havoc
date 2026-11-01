@@ -112,7 +112,7 @@
 
     function createWorld(map) {
         const m = MAPS[map] || MAPS.lobby;
-        return {map, plats: stage(map), fighters: [], anvils: [], time: 0, timeScale: 1, slowmo: 0, slowmoCd: 0,
+        return {map, plats: stage(map), fighters: [], anvils: [], time: 0, timeScale: 1, clash: null, slowmoCd: 0,
             ball: m.ball ? {x: m.ball.x, y: m.ball.y, vx: 0, vy: 0} : null, lavaY: m.lava ? m.lava.base : null,
             tunnel: m.tunnel ? {next: m.tunnel.every, x: null, hit: []} : null, hotT: 30, hot: 0, airReset: false,
             hitstop: 0, hazard: null, hazardT: 0, anvilT: 0, events: [], noDamage: false,
@@ -138,6 +138,7 @@
 
     // ---------------------------------------------------------------- moves
     // frame data at 60 fps: startup (from), active until (to), total (dur)
+    const HANG = 106, GRIP = 16;         // hanging from a ledge: feet this far below the top, body this far out
     const MOVES = {
         jab: {dur: fr(12), from: fr(4), to: fr(8), reach: 48, r: 32, dmg: 4},
         hook: {dur: fr(15), from: fr(5), to: fr(9), reach: 50, r: 34, dmg: 5},
@@ -149,6 +150,7 @@
         lunge: {dur: fr(20), from: fr(6), to: fr(11), reach: 70, r: 38, dmg: 8},      // forward + J
         sweep: {dur: fr(22), from: fr(6), to: fr(11), reach: 52, r: 34, dmg: 7},      // down + J, low
         pound: {dur: fr(60), from: fr(2), to: fr(58), reach: 0, r: 36, dmg: 9},       // down + K in the air
+        ledgekick: {dur: fr(13), from: fr(3), to: fr(11), reach: 0, r: 46, dmg: 16},  // J while hanging
     };
     const STRING = ['jab', 'hook', 'straight'];
 
@@ -161,6 +163,8 @@
     }
 
     function hurt(f) {
+        if (f.st === 'ledge')               // hanging: the hands on the lip can be stamped on
+            return {x0: f.x - 20, x1: f.x + 20, y0: f.y - HANG - 34, y1: f.y};
         return {x0: f.x - 20, x1: f.x + 20, y0: f.y - 94, y1: f.y};
     }
 
@@ -183,6 +187,7 @@
         const gloves = w.hazard === 'gloves' ? 1.35 : 1;
         const airborne = !t.ground;
         const ranged = PROJECTILES.includes(kind);
+        const hanging = t.ledge;
         // guarding, facing the blow: a fresh guard parries, a held one takes a fifth
         if (t.blocking && t.face === (a.x > t.x ? 1 : -1)) {
             if (t.blockT < 0.15 && !ranged && a.atk !== undefined) {
@@ -241,6 +246,9 @@
         case 'pound':
             kx = a.face * 160; ky = airborne ? 900 : -420; stun = 0.5;
             break;
+        case 'ledgekick':                              // up over the lip, boot first
+            kx = a.face * 600; ky = -420; stun = 0.5; tumble = true;
+            break;
         case 'dive':
             if (airborne) {                            // a spike, straight down
                 kx = a.face * 200; ky = 1150; tumble = true;
@@ -263,8 +271,12 @@
             }
         }
         let dmg = Math.round(baseDamage(kind) * (gloves > 1 ? 1.25 : 1));
-        // a counter hit: caught in the middle of their own attack
-        if (t.atk && t.atk.t < t.atk.move.to && !ranged) {
+        if (hanging) {                                 // hit while hanging: knocked off, and it hurts more
+            dmg = Math.round(dmg * 1.3);
+            kx = hanging.side * 260; ky = 380; tumble = true; stun = Math.max(stun, 0.5);   // outwards and down
+            t.noGrab = hanging.p; t.ledgeCd = 0.6;
+            callout(w, t, 'LEDGE PUNISH!');
+        } else if (t.atk && t.atk.t < t.atk.move.to && !ranged) {   // a counter: caught mid-attack
             dmg = Math.round(dmg * 1.25);
             callout(w, t, 'COUNTER!');
         } else if (kind === 'uppercut' && !airborne) {
@@ -300,16 +312,27 @@
         const shown = w.noDamage && !t.dummy ? 0 : dmg;
         w.events.push({type: 'hit', x: Math.round(hx), y: Math.round(hy), kind, power: dmg, heavy, color: a.color,
             by: a.id, on: t.id, dx: Math.round(kx / len * 100) / 100, dy: Math.round(ky / len * 100) / 100});
-        if (t.dummy) {
+        if (t.dummy) {                                 // the training dummy has opinions about your combos
             const crit = kind === 'straight' && Math.random() < 0.3;
+            const quip = ['OOF!', 'NICE COMBO!', 'OKAY, OKAY!', 'I YIELD!'][Math.min(3, t.comboN - 3)];
             w.events.push({type: 'pop', x: Math.round(t.x), y: Math.round(t.y - 110),
-                text: heavy && !crit && kind !== 'straight' ? 'BOOM!' : crit ? 'CRIT!' : `${dmg} DMG`, big: heavy || crit});
+                text: t.comboN >= 3 ? quip : heavy && !crit && kind !== 'straight' ? 'BOOM!' : crit ? 'CRIT!' : `${dmg} DMG`,
+                big: heavy || crit || t.comboN >= 3});
             return;
         }
         if (shown <= 0)
             return;
         if (w.airReset && !a.ground && a.jumps !== undefined) {
             a.jumps = Math.max(a.jumps, 1); a.airDash = true;
+        }
+        const clash = w.clash && [w.clash.a, w.clash.b].includes(a.id) && [w.clash.a, w.clash.b].includes(t.id);
+        if (clash) {                                   // the climax: the first blow in ends it
+            w.clash = null;
+            callout(w, a, 'FIRST STRIKE!');
+            w.events.push({type: 'clashWin', x: Math.round(hx), y: Math.round(hy), by: a.id, on: t.id, color: a.color});
+            knockOut(w, t, a, kind);
+            w.hitstop = 0.1; w.koSlow = 0; w.timeScale = 1;   // a hard freeze, then straight back to full speed
+            return;
         }
         t.hp = Math.max(0, t.hp - shown);
         if (t.hp <= 0) {
@@ -345,7 +368,7 @@
         t.vy = -760;
         t.spinV = face * 16;
         w.hitstop = 0.12;                             // the knockout freeze
-        w.slowmo = 0;
+        w.clash = null;
         w.koSlow = 1.0;                               // then a second at quarter speed
         t.bounces = 0;
         t.mantle = null; t.ledge = null;
@@ -378,9 +401,13 @@
         if (w.koSlow > 0) {                            // after a knockout: a second at 0.25x
             w.koSlow -= dtReal;
             w.timeScale += (0.25 - w.timeScale) * 0.5;
-        } else if (w.slowmo > 0) {
-            w.slowmo -= dtReal;
-            w.timeScale += (0.2 - w.timeScale) * 0.4;
+        } else if (w.clash) {                          // the climax: 0.15x until someone lands the first blow
+            w.clash.t -= dtReal;
+            w.timeScale = 0.15;
+            if (w.clash.t <= 0) {                      // nobody connected: it fizzles out
+                w.clash = null;
+                w.events.push({type: 'clashEnd'});
+            }
         } else {
             w.timeScale += (1 - w.timeScale) * 0.3;
         }
@@ -439,12 +466,15 @@
                 f.ledge = null; f.vy = -C.JUMP; f.vx = -f.face * 420; f.face = -f.face; f.st = 'air'; f.jumps = 1;
                 f.ledgeCd = 0.4;
                 w.events.push({type: 'jump', id: f.id});
-            } else if (pressed & (IN.JUMP | IN.UP)) {   // climb: the 220 ms mantle
-                const p = w.plats[f.ledge.p];
-                f.mantle = {t: 0, p: f.ledge.p, side: f.ledge.side, x0: f.x, y0: f.y,
-                    x1: f.ledge.side < 0 ? p.x + 22 : p.x + p.w - 22};
+            } else if (pressed & (IN.JUMP | IN.UP | IN.LIGHT)) {   // climb (the 220 ms mantle), or J: a hop kick
+                f.mantle = {t: 0, p: f.ledge.p, side: f.ledge.side};
                 f.ledge = null; f.st = 'mantle'; f.inv = Math.max(f.inv, 0.25);
                 w.events.push({type: 'mantle', id: f.id});
+                if (pressed & IN.LIGHT) {
+                    f.atk = {kind: 'ledgekick', move: MOVES.ledgekick, t: 0, hit: [], dir: {x: f.face, y: -0.4}};
+                    f.atkAt = w.time;
+                    w.events.push({type: 'swing', id: f.id, kind: 'ledgekick'});
+                }
             } else if ((pressed & IN.DOWN) || f.ledgeT > 2.5) {
                 f.noGrab = f.ledge.p;                       // not this ledge again until you land
                 f.ledge = null; f.st = 'air'; f.vy = 180; f.ledgeCd = 0.25;   // let go: a small push down
@@ -461,7 +491,7 @@
             f.dashT -= dt;
         const free = f.stun <= 0 && f.st !== 'tumble';
         const dir = ((k & IN.RIGHT) ? 1 : 0) - ((k & IN.LEFT) ? 1 : 0);
-        if (f.st === 'hurt' && f.stun <= 0)
+        if ((f.st === 'hurt' || f.st === 'land') && f.stun <= 0)
             f.st = f.ground ? 'idle' : 'air';
         if (!free) {
             f.blocking = false;
@@ -527,6 +557,7 @@
         // G: a grab, on the ground
         if ((pressed & IN.GRAB) && !f.atk && f.dashT <= 0 && f.ground) {
             f.atk = {kind: 'grab', move: MOVES.grab, t: 0, hit: [], dir: {x: f.face, y: 0}};
+            f.atkAt = w.time;
             w.events.push({type: 'swing', id: f.id, kind: 'grab'});
             return;
         }
@@ -566,6 +597,7 @@
         if (Math.abs(d.x) > 0.2 && STRING.includes(kind))
             f.face = d.x > 0 ? 1 : -1;
         f.atk = {kind, move: MOVES[kind], t: 0, hit: [], dir: d};
+        f.atkAt = w.time;
         if (kind === 'airkick') {
             f.vx = f.face * 720; f.vy = Math.min(f.vy, 0) * 0.3;
         } else if (kind === 'dive') {
@@ -588,6 +620,7 @@
             shoot(w, f, K.shot);
             f.vx -= f.face * (K.recoil || 0);
         }
+        f.atkAt = w.time;
         w.events.push({type: 'swing', id: f.id, kind});
         if (--f.weapon.uses <= 0) {
             f.weapon = null;
@@ -611,13 +644,59 @@
         }
         if (f.weapon)
             return;
-        const crate = w.crates.find(c => c.landed && Math.abs(c.x - f.x) < (pressedUse ? 70 : 34) &&
-            Math.abs(c.y - f.y) < 50);
-        if (!crate)
-            return;
+        const crate = w.crates.find(c => c.landed ? Math.abs(c.x - f.x) < (pressedUse ? 70 : 34) && Math.abs(c.y - f.y) < 50 :
+            pressedUse && !f.ground && Math.abs(c.x - f.x) < 60 && Math.abs(c.y - 20 - (f.y - 50)) < 70);
+        if (crate)
+            takeCrate(w, f, crate);
+    }
+
+    // a crate's weapon into f's hands; one snatched out of the air pops its parachute and bounces you up
+    function takeCrate(w, f, crate) {
         w.crates = w.crates.filter(c => c !== crate);
         f.weapon = {kind: crate.kind, uses: Weapons.KINDS[crate.kind].uses};
-        w.events.push({type: 'pickup', id: f.id, kind: crate.kind, x: Math.round(crate.x), y: Math.round(crate.y)});
+        const air = !crate.landed;
+        if (air) {
+            f.vy = Math.min(f.vy, -360);
+            f.jumps = Math.max(f.jumps, 1);
+        }
+        w.events.push({type: 'pickup', id: f.id, kind: crate.kind, x: Math.round(crate.x), y: Math.round(crate.y), air});
+    }
+
+    // where an attack's hitbox is this frame: {cx, cy, r}, or null outside its active frames
+    function hitCircle(w, f) {
+        const a = f.atk;
+        if (!a || a.kind === 'grab' || a.t < a.move.from || a.t > a.move.to)
+            return null;
+        const m = a.move, big = w.hazard === 'gloves' ? 1.6 : 1;
+        let cx, cy;
+        if (a.kind === 'airkick') {
+            cx = f.x + f.face * 34; cy = f.y - 40;
+        } else if (a.kind === 'sweep') {             // along the floor
+            cx = f.x + f.face * m.reach; cy = f.y - 12;
+        } else if (a.kind === 'pound') {
+            cx = f.x; cy = f.y - 6;
+        } else if (a.kind === 'ledgekick') {         // the boot, coming up over the lip
+            cx = f.x + f.face * 30; cy = f.y - 70;
+        } else if (a.kind === 'uppercut') {          // low and forward: it catches a standing opponent
+            cx = f.x + f.face * 34; cy = f.y - 52;
+        } else if (Weapons.KINDS[a.kind]) {
+            cx = f.x + f.face * m.reach; cy = f.y - 58;
+        } else if (a.kind === 'dive') {
+            cx = f.x + f.face * 26; cy = f.y - 8;
+        } else {
+            const len = Math.hypot(a.dir.x, a.dir.y) || 1;
+            cx = f.x + a.dir.x / len * m.reach * (big > 1 ? 1.3 : 1);
+            cy = f.y - 58 + a.dir.y / len * m.reach * (big > 1 ? 1.3 : 1);
+        }
+        return {cx, cy, r: m.r * big};
+    }
+
+    // the clash: when both blows land on the same frame, the one that went live first wins
+    function firstStrike(f, o) {
+        const ahead = (f.atk.t - f.atk.move.from) - (o.atk.t - o.atk.move.from);
+        if (Math.abs(ahead) > 1e-9)
+            return ahead > 0;
+        return f.atkAt !== o.atkAt ? f.atkAt < o.atkAt : f.id < o.id;
     }
 
     function attacks(w, f, live, dt) {
@@ -633,30 +712,24 @@
                 a.hit.push(t.id);
                 applyThrow(w, f, t);
             }
-        } else if (a.kind !== 'grab' && a.t >= m.from && a.t <= m.to) {
-            const big = w.hazard === 'gloves' ? 1.6 : 1;
-            let cx, cy;
-            if (a.kind === 'airkick') {
-                cx = f.x + f.face * 34; cy = f.y - 40;
-            } else if (a.kind === 'sweep') {             // along the floor
-                cx = f.x + f.face * m.reach; cy = f.y - 12;
-            } else if (a.kind === 'pound') {
-                cx = f.x; cy = f.y - 6;
-            } else if (a.kind === 'uppercut') {          // low and forward: it catches a standing opponent
-                cx = f.x + f.face * 34; cy = f.y - 52;
-            } else if (Weapons.KINDS[a.kind]) {
-                cx = f.x + f.face * m.reach; cy = f.y - 58;
-            } else if (a.kind === 'dive') {
-                cx = f.x + f.face * 26; cy = f.y - 8;
-            } else {
-                const len = Math.hypot(a.dir.x, a.dir.y) || 1;
-                cx = f.x + a.dir.x / len * m.reach * (big > 1 ? 1.3 : 1);
-                cy = f.y - 58 + a.dir.y / len * m.reach * (big > 1 ? 1.3 : 1);
+        } else if (hitCircle(w, f)) {
+            const {cx, cy, r} = hitCircle(w, f);
+            if (!f.ground && !f.weapon && !f.dummy) {      // a falling crate, smashed in mid-air
+                const crate = w.crates.find(c => !c.landed && circleHits(cx, cy, r, {x0: c.x - 22, x1: c.x + 22, y0: c.y - 44, y1: c.y}));
+                if (crate)
+                    takeCrate(w, f, crate);
             }
+            const pair = w.clash && [w.clash.a, w.clash.b];
             for (const t of live) {
                 if (t === f || a.hit.includes(t.id) || t.st === 'ko' || t.inv > 0 || t.shield > 0 || t.ghost)
                     continue;
-                if (circleHits(cx, cy, m.r * big, hurt(t))) {
+                if (pair && pair.includes(f.id) && pair.includes(t.id)) {   // both connecting now? the first one in
+                    const theirs = hitCircle(w, t);
+                    if (theirs && circleHits(theirs.cx, theirs.cy, theirs.r, hurt(f)) && circleHits(cx, cy, r, hurt(t)) &&
+                        !firstStrike(f, t))
+                        continue;
+                }
+                if (circleHits(cx, cy, r, hurt(t))) {
                     a.hit.push(t.id);
                     applyHit(w, f, t, a.kind);
                     if (!f.atk)
@@ -671,18 +744,20 @@
         }
     }
 
-    // the Tekken moment: both nearly out, both swinging, close together
+    // the Tekken climax: both nearly out (or at match point), facing, swinging within 80 ms of each other
     function slowmoCheck(w, live) {
-        if (w.noDamage || w.slowmo > 0 || w.slowmoCd > 0)
+        if (w.noDamage || w.clash || w.slowmoCd > 0)
             return;
+        const low = f => f.hp > 0 && (f.hp < C.HP * 0.25 || (w.matchPoint && f.hp < C.HP * 0.5));
         for (let i = 0; i < live.length; i++) {
             for (let j = i + 1; j < live.length; j++) {
                 const a = live[i], b = live[j];
-                if (a.atk && b.atk && a.hp > 0 && b.hp > 0 && a.hp < C.HP * 0.25 && b.hp < C.HP * 0.25 &&
-                    Math.hypot(a.x - b.x, a.y - b.y) < 150) {
-                    w.slowmo = 1.2;
+                if (a.atk && b.atk && low(a) && low(b) && Math.abs(a.atkAt - b.atkAt) <= 0.08 + 1e-6 &&
+                    (b.x - a.x) * a.face > 0 && (a.x - b.x) * b.face > 0 && Math.hypot(a.x - b.x, a.y - b.y) < 150) {
+                    w.clash = {a: a.id, b: b.id, t: 1.6};
                     w.slowmoCd = 8;
-                    w.events.push({type: 'slowmo', x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2 - 50)});
+                    w.timeScale = 0.15;
+                    w.events.push({type: 'clash', x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2 - 50)});
                     return;
                 }
             }
@@ -707,6 +782,20 @@
 
     // the mantle over a ledge: chest to the lip, a leg up, weight forward, standing
     const MANTLE_T = 0.22;
+    // the body's path over the lip at progress k: {fx: how far in from the edge (negative: still outside),
+    // dy: how far the feet are below the top}. The rig uses it too, to keep the hands on the corner.
+    function mantlePath(k) {
+        const ease = u => u * u * (3 - 2 * u);
+        if (k < 0.36)                         // 1: arms bend, the chest rises level with the edge
+            return {fx: -GRIP, dy: HANG - (HANG - 38) * ease(k / 0.36)};
+        if (k < 0.73) {                       // 2: hips swing forward, a knee hooks onto the top
+            const u = ease((k - 0.36) / 0.37);
+            return {fx: -GRIP + (GRIP + 22) * 0.55 * u, dy: 38 - 34 * u};
+        }
+        const u = ease((k - 0.73) / 0.27);    // 3: weight forward, up to standing
+        return {fx: -GRIP + (GRIP + 22) * (0.55 + 0.45 * u), dy: 4 - 4 * u};
+    }
+
     function mantle(w, f, dt) {
         const m = f.mantle, p = w.plats[m.p];
         if (!p || !p.alive) {
@@ -714,18 +803,9 @@
             return;
         }
         m.t += dt;
-        const k = Math.min(1, m.t / MANTLE_T), ease = u => u * u * (3 - 2 * u);
-        const edgeX = m.side < 0 ? p.x - 14 : p.x + p.w + 14;
-        if (k < 0.36) {                       // 1: arms bend, the chest rises level with the edge
-            const u = ease(k / 0.36);
-            f.x = edgeX; f.y = p.y + 72 - 34 * u;
-        } else if (k < 0.73) {                // 2: hips swing forward, a knee hooks onto the top
-            const u = ease((k - 0.36) / 0.37);
-            f.x = edgeX + (m.x1 - edgeX) * 0.55 * u; f.y = p.y + 38 - 34 * u;
-        } else {                              // 3: weight forward, up to standing
-            const u = ease((k - 0.73) / 0.27);
-            f.x = edgeX + (m.x1 - edgeX) * (0.55 + 0.45 * u); f.y = p.y + 4 - 4 * u;
-        }
+        const k = Math.min(1, m.t / MANTLE_T), path = mantlePath(k);
+        f.x = (m.side < 0 ? p.x : p.x + p.w) - m.side * path.fx;
+        f.y = p.y + path.dy;
         f.vx = f.vy = 0;
         f.mp = k;
         if (k >= 1) {
@@ -743,8 +823,8 @@
                 f.ledge = null;
                 f.st = 'air';
             } else {
-                f.x = f.ledge.side < 0 ? p.x - 16 : p.x + p.w + 16;
-                f.y = p.y + 72;
+                f.x = f.ledge.side < 0 ? p.x - GRIP : p.x + p.w + GRIP;   // hands on the corner, arms straight up
+                f.y = p.y + HANG;
                 f.vx = f.vy = 0;
                 f.st = 'ledge';
                 return;
@@ -796,17 +876,15 @@
         // platforms: land on top (one-way ones can be jumped through from below)
         f.ground = false;
         if (f.st === 'ko' && f.vy >= 0 && !f.rest) {
-            for (const p of w.plats) {
-                if (p.alive && oldY <= p.y + 2 && f.y >= p.y && f.x >= p.x - 6 && f.x <= p.x + p.w + 6) {
-                    f.y = p.y;
-                    if (f.bounces++ < 1 && impact > 300) {
-                        f.vy = -impact * 0.35; f.vx *= 0.5;
-                        w.events.push({type: 'thud', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
-                    } else {                          // settled: lying flat
-                        f.vy = 0; f.vx = 0; f.rest = true; f.spinV = 0;
-                        f.spin = (Math.abs(f.spin % (2 * Math.PI)) < Math.PI ? 1 : -1) * Math.PI / 2 * Math.sign(f.face || 1);
-                    }
-                    break;
+            const p = w.plats.filter(q => q.alive && crossed(q, oldY, f)).sort((a, b) => a.y - b.y)[0];
+            if (p) {
+                f.y = p.y;
+                if (f.bounces++ < 1 && impact > 300) {
+                    f.vy = -impact * 0.35; f.vx *= 0.5;
+                    w.events.push({type: 'thud', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
+                } else {                              // settled: lying flat
+                    f.vy = 0; f.vx = 0; f.rest = true; f.spinV = 0;
+                    f.spin = (Math.abs(f.spin % (2 * Math.PI)) < Math.PI ? 1 : -1) * Math.PI / 2 * Math.sign(f.face || 1);
                 }
             }
         }
@@ -815,13 +893,13 @@
             return;
         }
         if (f.st !== 'ko' && f.vy >= 0) {
+            let top = null;                            // the highest top crossed (a fast fall can cross two)
             for (const p of w.plats) {
-                if (!p.alive || (p.oneWay && f.drop > 0))
-                    continue;
-                if (oldY <= p.y + 2 && f.y >= p.y && f.x >= p.x - 6 && f.x <= p.x + p.w + 6) {
-                    f.y = p.y; f.vy = 0; f.ground = true; f.plat = p;
-                    break;
-                }
+                if (p.alive && !(p.oneWay && f.drop > 0) && crossed(p, oldY, f) && (!top || p.y < top.y))
+                    top = p;
+            }
+            if (top) {                                 // clamped to the top: never into it, never through it
+                f.y = top.y; f.vy = 0; f.ground = true; f.plat = top;
             }
         }
         if (f.ground && !wasGround && f.plat && f.plat.parkour) {
@@ -860,14 +938,9 @@
                 f.techAt = -9;
                 w.events.push({type: 'tech', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
                 callout(w, f, 'TECH!');
-            } else if (f.st === 'tumble') {               // a ragdoll lands: back on its feet
-                if (impact > 700) {
-                    f.vy = -impact * 0.3; f.ground = false;   // one bounce first
-                    w.events.push({type: 'thud', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
-                } else {
-                    f.st = 'idle'; f.spin = 0; f.stun = Math.min(f.stun, 0.12); f.inv = Math.max(f.inv, 0.3);
-                    w.events.push({type: 'land', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
-                }
+            } else if (f.st === 'tumble') {               // a ragdoll lands: flat on the floor, a 120 ms crouch, up
+                f.st = 'land'; f.spin = 0; f.spinV = 0; f.vx *= 0.3; f.stun = 0.12; f.inv = Math.max(f.inv, 0.3);
+                w.events.push({type: impact > 700 ? 'thud' : 'land', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
             } else if (impact > 500) {
                 w.events.push({type: 'land', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
             }
@@ -881,7 +954,7 @@
                 for (const side of [-1, 1]) {
                     const edge = side < 0 ? p.x : p.x + p.w;
                     const out = (f.x - edge) * side;
-                    if (out > 0 && out < 36 && f.y > p.y + 30 && f.y < p.y + 100) {
+                    if (out > 0 && out < 36 && f.y > p.y + 60 && f.y < p.y + HANG + 24) {
                         f.ledge = {p: i, side}; f.ledgeT = 0; f.inv = Math.max(f.inv, C.LEDGE_INV);
                         f.face = -side; f.jumps = 2; f.airDash = true;
                         w.events.push({type: 'ledge', id: f.id});
@@ -890,7 +963,7 @@
                 }
             });
         }
-        if (f.st !== 'ko' && f.st !== 'tumble' && f.st !== 'hurt' && !f.ledge)
+        if (f.st !== 'ko' && f.st !== 'tumble' && f.st !== 'hurt' && f.st !== 'land' && !f.ledge)
             f.st = !f.ground ? 'air' : f.dashT > 0 ? 'dash' : f.blocking ? 'block' : Math.abs(f.vx) > 40 ? 'run' : 'idle';
         // the pit: out (or, where there is none, back from the top)
         if (f.y > H + 220 && f.st !== 'gone') {
@@ -904,6 +977,13 @@
             }
             f.st = 'gone';
         }
+    }
+
+    // did f's feet pass the platform's top this step? Moving plates count from where they were as well,
+    // so one rising into a falling body catches it instead of passing through
+    function crossed(p, oldY, f) {
+        const top0 = Math.max(p.y, p.py ?? p.y), x0 = Math.min(p.x, p.px ?? p.x), x1 = Math.max(p.x, p.px ?? p.x) + p.w;
+        return oldY <= top0 + 2 && f.y >= p.y && f.x >= x0 - 6 && f.x <= x1 + 6;
     }
 
     function platforms(w, live, dt) {
@@ -943,6 +1023,7 @@
                 continue;
             const m = p.move, k = (Math.sin(w.time * 2 * Math.PI / m.period) + 1) / 2;
             const v = m.from + (m.to - m.from) * k, d = v - p[m.axis];
+            p.px = p.x; p.py = p.y;
             p[m.axis] = v;
             for (const f of live) {
                 if (f.ground && f.plat === p)
@@ -961,14 +1042,14 @@
         b.y += b.vy * dt;
         const R = 18;
         if (b.x < R || b.x > W - R) {
-            b.x = b.x < R ? R : W - R; b.vx = -b.vx * 0.8;
+            b.x = b.x < R ? R : W - R; b.vx = -b.vx * 0.88;
         }
         if (b.y < R) {
             b.y = R; b.vy = Math.abs(b.vy) * 0.6;
         }
         for (const p of w.plats) {
             if (p.alive && b.vy > 0 && b.x > p.x && b.x < p.x + p.w && b.y + R >= p.y && b.y + R - b.vy * dt <= p.y + 4) {
-                b.y = p.y - R; b.vy = -b.vy * 0.72; b.vx *= 0.97;
+                b.y = p.y - R; b.vy = -b.vy * 0.8; b.vx *= 0.97;    // a lively bounce
                 if (Math.abs(b.vy) < 60)
                     b.vy = 0;
             }
@@ -983,9 +1064,10 @@
                 Math.hypot(b.x - (f.x + f.face * 50), b.y - (f.y - 50)) < 40 + R;
             if (strike || circleHits(b.x, b.y, R, box)) {
                 const dir = b.x < f.x ? -1 : 1;
-                if (strike) {                          // a punch or a kick sends it flying
-                    const d = f.atk.dir || {x: f.face, y: -0.3};
-                    b.vx = (d.x || f.face) * 1100; b.vy = Math.min(-420, (d.y || 0) * 900 - 380);
+                if (strike) {                          // a punch drives it low and hard; a kick or launcher lofts it
+                    const d = f.atk.dir || {x: f.face, y: -0.3}, light = STRING.includes(f.atk.kind);
+                    b.vx = (d.x || f.face) * (light ? 1150 : 1350);
+                    b.vy = Math.min(light ? -360 : -680, (d.y || 0) * 900 - (light ? 320 : 600));
                     b.by = f.id;
                     w.events.push({type: 'kick', x: Math.round(b.x), y: Math.round(b.y)});
                 } else {                               // a dash, or just walking into it
@@ -1139,7 +1221,7 @@
         if (w.weapons) {
             w.crateT -= dt;
             if (w.crateT <= 0 && w.crates.length < 3) {
-                w.crateT = 14 + Math.random() * 6;
+                w.crateT = (14 + Math.random() * 6) / (w.crateRate || 1);   // (the sandbox can turn it up)
                 const tops = w.plats.filter(p => p.alive && p.w > 120);
                 const p = tops[Math.floor(Math.random() * tops.length)];
                 if (p) {
@@ -1268,7 +1350,7 @@
         const s = f.face || 1;
         const run = f.st === 'run' ? Math.sin(t * 15) : 0;
         const lean = Math.max(-1, Math.min(1, (f.vx || 0) / 440)) * 0.22 * s;
-        const hip = {x: 0, y: -46};
+        const hip = {x: 0, y: f.st === 'land' ? -38 : -46};     // (a landing crouch drops the hips)
         let lThigh = -0.15 + run * 0.7, rThigh = 0.15 - run * 0.7, lShin = 0.1 + Math.max(0, run) * 0.6,
             rShin = 0.1 + Math.max(0, -run) * 0.6;
         let lArm = -0.4 - run * 0.6, rArm = 0.5 + run * 0.6, lFore = -0.7, rFore = -0.9;
@@ -1284,12 +1366,13 @@
             body = 0.55; lThigh = 1.0; lShin = -0.4; rThigh = -0.9; rShin = -1.0; lArm = -1.4; rArm = -1.2;
             lFore = -0.2; rFore = -0.2;
             break;
-        case 'ledge': {                            // hands on the lip, body hanging, swaying a little
-            const sway = Math.sin(t * 2.2) * 0.08;
-            lArm = 2.9; rArm = 2.7; lFore = 0; rFore = 0; body = -0.1 + sway;
-            lThigh = -0.1 - sway; rThigh = 0.2 - sway; lShin = 0.05; rShin = 0.3;
+        case 'ledge':                              // hanging straight down from the hands (they're solved below)
+            body = 0; lThigh = -0.1; rThigh = 0.15; lShin = 0.1; rShin = 0.25;
             break;
-        }
+        case 'land':                               // the landing crouch: knees bent, arms out for balance
+            body = 0.2; lThigh = 0.75; lShin = -1.3; rThigh = -0.45; rShin = 1.0;
+            lArm = -0.6; rArm = 0.8; lFore = -0.5; rFore = -0.5;
+            break;
         case 'mantle': {                           // 1: elbows bend; 2: a knee hooks up; 3: standing
             const k = p;
             if (k < 0.36) {
@@ -1343,6 +1426,9 @@
         case 'dive':                               // a diving kick, 45 degrees down
             body = 0.5; lThigh = 0.9; rThigh = 0.2; lShin = 0; rShin = -1.3; lArm = -2.4; rArm = -2.0;
             break;
+        case 'ledgekick':                          // up over the lip, the lead leg snapping out
+            body = -0.35; lThigh = 1.9; lShin = 0; rThigh = -0.2; rShin = -0.9;
+            break;
         case 'lunge':                              // a long step behind a locked-out straight
             rArm = 1.57; rFore = 0; lArm = -0.4; lFore = -1.4; body += 0.35 * out; lThigh = -0.7 * out; rThigh = 0.9 * out;
             rShin = -0.3 * out;
@@ -1371,6 +1457,25 @@
             lArm = -2.4 + Math.sin(t * 9) * 0.4; rArm = 2.0; lThigh = 0.9; rThigh = -0.7; lShin = -0.9; rShin = 0.8;
             lFore = 0.6; rFore = -0.6;
         }
+        // on a ledge, and through the first two phases of the mantle, the hands hold the corner:
+        // each arm is solved (two 18 px bones) to reach it from wherever the shoulder is
+        let grip = null;
+        if (f.st === 'ledge') {
+            grip = {x: GRIP, y: -HANG};
+        } else if (f.st === 'mantle' && p < 0.73) {
+            const m = mantlePath(p);
+            grip = {x: -m.fx, y: -m.dy};
+        }
+        if (grip) {
+            const sh = {x: hip.x + Math.sin(Math.PI - body) * 30, y: hip.y + Math.cos(Math.PI - body) * 30};
+            const reach = tx => {
+                const vx = tx - sh.x, vy = grip.y - sh.y, d = Math.min(35.5, Math.hypot(vx, vy));
+                const base = Math.atan2(vx, vy), bend = Math.acos(d / 36);
+                return [base + bend - body, -2 * bend];   // elbows out, away from the wall
+            };
+            [lArm, lFore] = reach(grip.x - 2);
+            [rArm, rFore] = reach(grip.x + 2);
+        }
         ctx.save();
         ctx.translate(f.x, f.y + bob);
         if (f.st === 'tumble' || f.st === 'ko') {
@@ -1379,6 +1484,11 @@
             ctx.translate(0, 46);
         }
         ctx.scale(s, 1);
+        if (f.st === 'ledge') {                       // a slow pendulum, swinging from the hands
+            ctx.translate(GRIP, -HANG);
+            ctx.rotate(Math.sin(t * 2.2) * 0.06);
+            ctx.translate(-GRIP, HANG);
+        }
         const alpha = opts.alpha === undefined ? 1 : opts.alpha;
         ctx.globalAlpha = alpha * (f.inv > 0 && !f.dummy && Math.floor(t * 20) % 2 ? 0.5 : 1);
         ctx.strokeStyle = opts.flash ? '#ffffff' : f.color;
@@ -1517,5 +1627,5 @@
     }
 
     return {W, H, C, COLORS, HATS, TRAILS, HAZARDS, VOTE_PAIRS, MODES, MAPS, ARENAS, IN, MOVES, stage, createWorld,
-        makeFighter, makeDummy, explode, knockOut, step, drawRig};
+        makeFighter, makeDummy, explode, knockOut, step, drawRig, mantlePath, HANG, GRIP};
 });

@@ -3,6 +3,10 @@
 **Created by Mehul** · [github.com/MehulK-techie/stick-havoc](https://github.com/MehulK-techie/stick-havoc) ·
 v1.2.0-tournament · MIT License
 
+Built as a zero-dependency LAN entertainment module for the
+[Fedora Workstation Config](https://github.com/MehulK-techie/fedora-workstation-config) ecosystem
+(🐧 MK Linux Workstation). The lobby's creator badge links both repos.
+
 An offline LAN stick-figure brawler for 2 to 15 players. One computer hosts;
 everyone else plays in a browser (Chrome, Firefox, Safari, Edge; Windows,
 macOS, Linux, Android, iOS). No internet, no installs on the players' side.
@@ -48,8 +52,9 @@ has joined (their names over their heads). Three stations:
   (Hard reacts in about 60 ms and parries). `Esc` or `P` stops. When the
   host starts a match, sparring ends at once and you're in.
 - **The ball**: punch it, kick it, dash into it: lobby football, with a
-  goal against the right wall. A goal sets off confetti and an air horn,
-  `GOAL!`, and counts on `LOBBY BALL: X GOALS` (for the session); the ball
+  goal against the right wall. A punch drives it low and hard; a kick or a
+  launcher lofts it; it bounces lively off floors and walls. A goal sets off
+  confetti, fireworks over the net, an air horn and a chime, `GOAL!`, and counts on `LOBBY BALL: X GOALS` (for the session); the ball
   drops back in the middle 1.5 s later.
 - **Parkour tower** (top right): step on `START ▲ CLIMB` and a clock runs at
   the top right of your screen (`CLIMB: 0.00s`); reach `FINISH` for gold
@@ -61,13 +66,14 @@ has joined (their names over their heads). Three stations:
   if they leave the next one, with a notice to everyone) presses `E` here for
   the **match settings**: game mode (King of the Hill, Royal Rumble, Bomb Tag,
   Floor Is Lava, Random, or **Banger Shuffle**: weighted picks that never
-  repeat the last mode or map, nor a mode-and-map pair from the last 3
-  matches), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
+  repeat the last mode, nor either of the last 2 maps), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
   weapons on or off, a player limit (2-15) and the map (or Random, or
   Banger Shuffle). Changes
   show on everyone's screen at once; anyone else at the console sees them
   read-only ("Waiting for Host to start..."). `Enter` starts: 3, 2, 1, and
-  everyone is on the stage. (`Q` / `Tab` cycle mode and map without the
+  everyone is on the stage. Random and Banger Shuffle are settled by the
+  server when the countdown starts, and the countdown names the real mode
+  and map. (`Q` / `Tab` cycle mode and map without the
   drawer.)
 - **1P Arcade** (the settings drawer's button, the host): a ladder of five computer opponents, one
   round each, on the four arenas in turn: Rookie Stick (slow, basic),
@@ -76,8 +82,15 @@ has joined (their names over their heads). Three stations:
   boss, **Shadow Mehul** (a dark figure with red eyes: juggles, grabs,
   parries). `STAGE CLEAR! Time: XXs` between stages, with your health
   restored; lose once and it's over. Anyone else in the room watches.
+- **1P Solo Match / Map Sandbox** (the settings drawer, when you're the only
+  one in the room): any map (or Random / Banger Shuffle) and match length
+  from the settings above, then a mode against bots: 1v1 Duel, FFA with 3
+  bots, Bomb Tag or Floor Is Lava; bots Easy, Normal or Hard; weapon crates
+  Off, Normal or Frequent (three times as often). `Esc`, or Back to lobby in
+  the corner, leaves at any time.
 - **Training dummy** (right): it springs back from every hit and pops the
-  damage (`5 DMG`, `BOOM!`, `CRIT!`). Players can knock each other about in
+  damage (`5 DMG`, `BOOM!`, `CRIT!`); three hits into a combo it starts
+  talking back (`OOF!`, `NICE COMBO!`, `OKAY, OKAY!`, `I YIELD!`). Players can knock each other about in
   the lobby too, but nobody loses health there.
 
 ## Controls
@@ -94,6 +107,7 @@ has joined (their names over their heads). Three stations:
 | Breakfall: tap just before you hit the floor after a launch or throw | `L` | L |
 | Dash: 10 frames invulnerable, cancels a punch's recovery | `L` or `C` | L |
 | Drop through a ledge | `↓` + jump | ▼ + ⤒ |
+| Hanging from a ledge: climb · hop kick · let go | `W`/`↑` · `J` · `S`/`↓` | ⤒ · J · ▼ |
 | Guard (hold; just in time: parry) | `S` or `↓` | joystick down |
 | Grab & throw (goes through a guard) | `G` | G |
 | Use a station · pick up / throw a weapon | `E` | E |
@@ -120,11 +134,19 @@ nearest opponent close by, as in Tekken.
   bounces off someone standing.
 - Heavy hits freeze both fighters for 60 ms, shake the screen along the
   blow, and ragdoll the victim until they land. Hard hits bounce off walls.
+  A ragdoll lands flat on the top of whatever it meets (the highest
+  platform it crosses, moving ones included), with no bounce: a 120 ms
+  landing crouch, then back on its feet.
 - Fall just past a ledge and you catch it (a second of invulnerability),
-  hanging by your hands. Jump or up: a 220 ms mantle (chest up to the lip,
-  a knee hooked over, weight forward, standing). Down: let go, with a small
-  push, and that ledge won't catch you again until you land. Jump while
-  holding away from the wall: leap off backwards.
+  your hands gripping the corner and your body swinging gently below them.
+  Jump or up: a 220 ms mantle (chest up to the lip, a knee hooked over,
+  weight forward, standing). `J`: a **ledge hop kick**, up over the lip boot
+  first (16 damage to whoever is standing there), landing on top. Down: let
+  go, with a small push, and that ledge won't catch you again until you
+  land. Jump while holding away from the wall: leap off backwards.
+- Hanging is no place to stall: once the second of invulnerability is up, a
+  hit on the hands (a punch, a sweep, a stomp) does 1.3x damage
+  (`LEDGE PUNISH!`) and knocks you off and down.
 - The ground pound lands with a shockwave that pops up anyone standing
   close. The breakfall rolls you up with 8 invulnerable frames instead of
   bouncing on the floor.
@@ -138,11 +160,19 @@ nearest opponent close by, as in Tekken.
   `3x COMBO!`, and `CLUTCH REVERSAL!` when a fighter under 25% lands the K.O.
 - **Weapons** (when on): every 14-20 s a crate parachutes onto a platform.
   Walk over it (or `E`) to take the weapon; `J` uses it, `E` throws it.
+  No need to wait for it to land: jump up to a falling crate and press `E`,
+  or hit it with an aerial attack, and the parachute pops, the weapon is in
+  your hands and you bounce up a little.
   Katana (5 fast, long slashes), Home-Run Bat (3 slow swings that send them
   across the arena), Laser Blaster (3 shots, with recoil), Bouncy Bomb
   (thrown: bounces twice, then blows everyone back).
-- Both fighters under 25 % and swinging at each other close up: 0.2x speed
-  for 1.2 s, the camera closes in.
+- **The climax clash**: both fighters under 25 % (or under 50 % when both
+  are at match point), facing each other close up, attacking within 80 ms
+  of each other: the game drops to 0.15x and the camera closes in. The
+  first blow to connect wins it (the one whose hitbox went live first, not
+  the one pressed first): a 100 ms freeze, a gold starburst and a deep
+  stinger, and the loser flies backwards into the K.O. at full speed. If
+  neither lands within 1.6 s, the moment passes.
 - **The knockout**, in order and never on top of each other: a 120 ms
   freeze with sparks, a second at 0.25x while the loser crumples (one
   bounce, dust, then lying still), letterbox bars slide in and the HUD
@@ -178,8 +208,8 @@ also end it early (Back to lobby).
 
 | File | Does |
 |---|---|
-| `server.js` | Express serves `public/`; a `ws` hub runs the game at 30 ticks a second (the only authority: browsers send keys) and sends every browser a snapshot each tick. The lobby and its stations, matches and rounds, the queue, Bomb Tag, the vote, the training bot. Binds `0.0.0.0:3000`, prints the LAN addresses and a QR code. |
-| `public/physics.js` | The simulation, shared with the browser: the maps, movement, platforms (one-way, crumbling, solid pillars), the moves and their frame data, juggles, wall bounces, ledges, hit-stop and slow motion, the reactor beam, bumpers, explosions; and the stick-figure rig with its headgear. |
+| `server.js` | Express serves `public/`; a `ws` hub runs the game at 30 ticks a second (the only authority: browsers send keys) and sends every browser a snapshot each tick. The lobby and its stations, matches and rounds, the queue, Bomb Tag, the vote, the training bot, the 1P arcade and sandbox; Random and Banger Shuffle are settled here. Binds `0.0.0.0:3000`, prints the LAN addresses and a QR code. |
+| `public/physics.js` | The simulation, shared with the browser: the maps, movement, platforms (one-way, crumbling, solid pillars), the moves and their frame data, juggles, wall bounces, ledges (the grip, the mantle, the hop kick), landing clamps, hit-stop, the climax clash, crates, the reactor beam, bumpers, explosions; and the stick-figure rig with its headgear. |
 | `public/engine.js` | The browser: draws at 60 fps, interpolating between snapshots; the camera; particles, trails, ribbons, banners; keyboard, mouse and touch input. |
 | `public/lobby.js` | The lobby room and its stations, the console's wall screen, the dummy's damage pops. |
 | `public/hud.js`, `public/style.css` | The command bar, the input feed, the wardrobe drawer, the match panels, the vote. |

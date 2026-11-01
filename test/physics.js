@@ -388,5 +388,23 @@ function run(w, frames, inputs) {
     run(w2, 6, i => ({1: {k: i === 0 ? P.IN.HEAVY : 0}}));
     check('a flying kick smashes it open: weapon in hand', g.weapon && g.weapon.kind === 'katana' && !w2.crates.length);
 }
+{   // the Colosseum: a hard hit into the wall, falling onto the floor in the same step: lands on top, upright
+    const w = world('colosseum'); const floor = w.plats.find(p => p.floor) || w.plats.reduce((a, p) => p.y > a.y ? p : a);
+    const f = fighter(w, 1, 40, floor.y - 20);
+    Object.assign(f, {ground: false, st: 'tumble', vx: -1400, vy: 1200, stun: 0.6, spin: 9, spinV: 13});
+    let deepest = -Infinity;
+    for (let i = 0; i < 30; i++) {
+        run(w, 1, {});
+        if (f.x > floor.x && f.x < floor.x + floor.w) deepest = Math.max(deepest, f.y - floor.y);
+    }
+    check('a wall bounce never sinks a body into the floor', deepest <= 0 && f.ground && f.y === floor.y);
+    check('and it ends upright', f.st === 'idle' && f.spin === 0);
+}
+{   // two bodies in one spot are eased apart sideways, never pushed down
+    const w = world('colosseum'); const a = fighter(w, 1, 800), b = fighter(w, 2, 802);
+    run(w, 12, {});
+    check('overlapping fighters separate sideways, feet still on the floor', Math.abs(b.x - a.x) >= 29 && a.y === 820 &&
+        b.y === 820 && a.ground && b.ground);
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

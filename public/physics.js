@@ -305,6 +305,8 @@
         t.st = tumble ? 'tumble' : 'hurt';
         if (tumble)
             t.spinV = (a.face > 0 ? 1 : -1) * 13;
+        else
+            t.spin = 0;
         const heavy = !['jab', 'hook', 'katana', 'laser'].includes(kind);
         w.hitstop = Math.max(w.hitstop, heavy ? 0.06 : 0.03);
         const hx = (a.x + t.x) / 2, hy = t.y - 60;
@@ -431,6 +433,7 @@
         slowmoCheck(w, live);
         for (const f of live)
             move(w, f, dt);
+        separate(w, live);
         platforms(w, live, dt);
         movers(w, live, dt);
         ball(w, live, dt);
@@ -875,7 +878,8 @@
         }
         // platforms: land on top (one-way ones can be jumped through from below)
         f.ground = false;
-        if (f.st === 'ko' && f.vy >= 0 && !f.rest) {
+        // (a wall bounce this step may have turned vy upwards: the landing goes by how the body arrived)
+        if (f.st === 'ko' && (f.vy >= 0 || impact >= 0) && !f.rest) {
             const p = w.plats.filter(q => q.alive && crossed(q, oldY, f)).sort((a, b) => a.y - b.y)[0];
             if (p) {
                 f.y = p.y;
@@ -892,7 +896,7 @@
             f.vx = f.vy = 0;
             return;
         }
-        if (f.st !== 'ko' && f.vy >= 0) {
+        if (f.st !== 'ko' && (f.vy >= 0 || impact >= 0)) {
             let top = null;                            // the highest top crossed (a fast fall can cross two)
             for (const p of w.plats) {
                 if (p.alive && !(p.oneWay && f.drop > 0) && crossed(p, oldY, f) && (!top || p.y < top.y))
@@ -900,6 +904,8 @@
             }
             if (top) {                                 // clamped to the top: never into it, never through it
                 f.y = top.y; f.vy = 0; f.ground = true; f.plat = top;
+                if (f.st !== 'tumble')
+                    f.spin = 0;                        // (upright on the floor, whatever came before)
             }
         }
         if (f.ground && !wasGround && f.plat && f.plat.parkour) {
@@ -976,6 +982,23 @@
                 w.events.push({type: 'ko', x: Math.round(f.x), y: H - 40, id: f.id, by: f.lastHit, fell: true});
             }
             f.st = 'gone';
+        }
+    }
+
+    // bodies don't stack: two fighters closer than 30 px at the same height are eased apart sideways
+    // (never up or down, so nobody is ever pushed into a floor)
+    const BODY = 30;
+    function separate(w, live) {
+        const solid = live.filter(f => f.st !== 'ko' && !f.ghost && !f.dummy && !f.ledge && !f.mantle);
+        for (let i = 0; i < solid.length; i++) {
+            for (let j = i + 1; j < solid.length; j++) {
+                const a = solid[i], b = solid[j], dx = b.x - a.x;
+                if (Math.abs(dx) >= BODY || Math.abs(a.y - b.y) >= 60)
+                    continue;
+                const dir = Math.sign(dx) || (a.id < b.id ? 1 : -1), push = (BODY - Math.abs(dx)) / 4;
+                a.x = Math.max(22, Math.min(W - 22, a.x - dir * push));
+                b.x = Math.max(22, Math.min(W - 22, b.x + dir * push));
+            }
         }
     }
 
@@ -1479,7 +1502,8 @@
         ctx.save();
         ctx.translate(f.x, f.y + bob);
         if (f.st === 'tumble' || f.st === 'ko') {
-            ctx.translate(0, -46);
+            const lying = f.st === 'ko' && !f.vx && !f.vy;   // at rest: flat on the floor, not at hip height
+            ctx.translate(0, lying ? -12 : -46);
             ctx.rotate(f.spin || 0);
             ctx.translate(0, 46);
         }

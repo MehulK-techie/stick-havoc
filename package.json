@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/physics.js && node test/keys.js && node test/smoke.js"
+    "test": "node test/physics.js && node test/keys.js && node test/page.js && node test/smoke.js"
   },
   "license": "MIT",
   "engines": {

@@ -320,7 +320,6 @@ const Hud = (() => {
         $('sNote').textContent = isHost ? 'You are the room host: every change shows on everyone\'s screen.' :
             'Waiting for Host to start...';
         $('sStart').classList.toggle('hidden', !isHost);
-        $('sArcade').classList.toggle('hidden', !isHost);
         const rows = $('sRows');
         rows.textContent = '';
         for (const [key, [title, names]] of Object.entries(LABELS)) {

@@ -3,16 +3,18 @@
 // Walks a player through it with real key presses: lobby.png, drawer.png
 // (the wardrobe), settings.png (the host console), moves.png, spar.png
 // (practice bot), match.png (the Magma Foundry), ko.png (the K.O. cinematic),
-// podium.png (the winner's card), sandbox.png (a 1P sandbox match), rig.png (ledge grip, mantle, landing
-// crouch, drawn close up), phone.png (touch controls).
+// podium.png (the winner's card), controls.png (rebinding), feedback.png, solo.png (the 1P window),
+// sandbox.png (a 1P sandbox match), menu.png (Esc: paused), rig.png (ledge grip, mantle, landing crouch,
+// drawn close up), phone.png (touch controls).
 'use strict';
 const {spawn} = require('child_process');
 const fs = require('fs'), os = require('os'), path = require('path');
 const WebSocket = require('ws');
 const outDir = path.resolve(process.argv[2] || '.');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {env: {...process.env, PORT: 3998}});
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-ff-'));
+const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')],
+    {env: {...process.env, PORT: 3998, FEEDBACK_FILE: path.join(profile, 'feedback.json')}});
 const ff = spawn('firefox', ['--headless', '--no-remote', '--profile', profile, '--remote-debugging-port', '9229'],
     {stdio: 'ignore'});
 let ws, seq = 0;
@@ -65,6 +67,30 @@ async function shot(ctx, name) {
         await sleep(900);
         await shot(ctx, 'drawer.png');
         await tap('\uE00C');              // Esc
+        // the controls: punch moved to I, then I pressed: the feed says it punched
+        await js(`document.getElementById('keysBtn').click()`);
+        await sleep(300);
+        await js(`[...document.querySelectorAll('#cRows .row')][3].querySelector('.keys button').click()`);
+        await tap('i');
+        await sleep(300);
+        await shot(ctx, 'controls.png');
+        await js(`document.getElementById('cDone').click()`);
+        await tap('i');
+        await sleep(200);
+        const r = await js(`document.getElementById('feed').textContent + ' | ' + document.getElementById('commands').textContent`);
+        console.log('after rebinding, I pressed:', r && r.result && r.result.value);
+        await js(`document.getElementById('keysBtn').click()`);
+        await js(`document.getElementById('cReset').click()`);
+        await js(`document.getElementById('cDone').click()`);
+        // feedback
+        await js(`document.getElementById('fbBtn').click()`);
+        await sleep(300);
+        await js(`document.querySelector('#fbKinds [data-k=feature]').click();
+            document.getElementById('fbText').value = 'A replay of the last K.O. from another angle would be great.'`);
+        await shot(ctx, 'feedback.png');
+        await js(`document.getElementById('fbSend').click()`);
+        await sleep(500);
+        console.log('feedback file:', fs.readFileSync(path.join(profile, 'feedback.json'), 'utf8').replace(/\s+/g, ' '));
         await hold('d', 1250);             // to the console
         await sleep(400);
         await tap('e');                    // the match settings
@@ -98,18 +124,22 @@ async function shot(ctx, name) {
             await sleep(900);
             await shot(ctx, 'podium.png');
         }
-        // the 1P sandbox: back in the lobby, alone, FFA against three bots
+        // 1P Solo: back in the lobby, alone: FFA against three Demons, then Esc (paused)
         if (await waitFor(`!document.body.classList.contains('in-match')`, 20000)) {
             await sleep(1500);
-            await js(`Hud.openSettings(Lobby.state.sel, true, {mode: [], map: [], target: [], timer: [], weapons: [], limit: []})`);
+            await js(`Hud.openSolo()`);
             await sleep(400);
-            await js(`[...document.querySelectorAll('#sSoloRows button')].find(b => b.textContent === 'FFA · 3 bots').click()`);
+            for (const label of ['Colosseum', 'FFA vs bots', 'Demon'])
+                await js(`[...document.querySelectorAll('#oRows button')].find(b => b.textContent === '${label}').click()`);
             await sleep(200);
             await shot(ctx, 'solo.png');
-            await js(`document.getElementById('sSandbox').click()`);
+            await js(`document.getElementById('oSandbox').click()`);
             await sleep(8000);
             await shot(ctx, 'sandbox.png');
-            await tap('\uE00C');          // Esc: leaves the sandbox
+            await tap('\uE00C');          // Esc: the menu, and the match holds still
+            await sleep(600);
+            await shot(ctx, 'menu.png');
+            await js(`document.getElementById('mLobby').click()`);
             await sleep(1500);
         }
         // the rig close up: hanging from both edges, the mantle, the landing crouch

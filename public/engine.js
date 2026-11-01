@@ -783,6 +783,7 @@
             for (const [x, y, kind, vx] of v.sh)
                 Weapons.drawShot(ctx, kind, x, y, vx, clock);
             drawGhosts(dt);
+            liftLabels(v.f);
             for (const f of v.f)
                 drawFighter(f, v.s);
         }
@@ -996,6 +997,23 @@
         ctx.restore();
     }
 
+    // name tags in a crowd: a tag that would overlap a neighbour's is lifted a row (smoothly), so every name
+    // and health bar stays readable
+    const lifts = new Map();
+    function liftLabels(fs) {
+        ctx.font = '600 14px system-ui, sans-serif';
+        const placed = [];
+        for (const f of fs.filter(o => !o.dummy && o.st !== 'ko').sort((a, b) => a.x - b.x)) {
+            const half = Math.max(30, ctx.measureText(f.name).width / 2 + 8);
+            let lift = 0;
+            while (placed.some(p => Math.abs(p.x - f.x) < p.half + half && Math.abs(p.y - (f.y - lift)) < 24) && lift < 120)
+                lift += 24;
+            placed.push({x: f.x, y: f.y - lift, half});
+            const was = lifts.get(f.id) || 0;
+            lifts.set(f.id, was + (lift - was) * 0.25);
+        }
+    }
+
     function drawFighter(f, s) {
         const gear = f.gear || {};
         const fast = Math.abs(f.vx) > 700 || f.st === 'dash' || f.ak === 'airkick' || f.ak === 'dive';
@@ -1058,7 +1076,7 @@
         ctx.font = '600 14px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillStyle = f.team ? TEAM_COLORS[f.team] : f.id === myId ? '#f1f5f9' : 'rgba(226, 232, 240, 0.7)';
-        const ty = f.y - (gear.hat === 'kasa' || gear.hat === 'crown' ? 140 : 128) - (f.bomb ? 30 : 0);
+        const ty = f.y - (gear.hat === 'kasa' || gear.hat === 'crown' ? 140 : 128) - (f.bomb ? 30 : 0) - (lifts.get(f.id) || 0);
         ctx.fillText(f.name, f.x, ty);
         if (isHost) {                                     // 👑 ROOM HOST, lit, over the name
             ctx.font = '800 11px system-ui, sans-serif';

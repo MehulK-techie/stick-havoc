@@ -29,6 +29,17 @@ code; the lobby's wall screen shows them too. Everyone must be on the same
 Wi-Fi or phone hotspot. If nobody can connect, the host's firewall is
 blocking the port: on Fedora, `sudo firewall-cmd --add-port=3000/tcp`.
 
+### Updating
+
+If you cloned the repo, **`./update.sh`** brings it up to date (Linux,
+macOS; on Windows, `git pull` then `npm install`). It pulls `main`, then
+runs `npm install`. Any changes you've made to the files are set aside first
+(as a stash named `update.sh: your changes before updating`, and only if
+there are some) and put back afterwards; if one clashes with the update, it
+stops and says so, and your version stays in `git stash list` until you
+drop it. It won't touch a branch other than `main`, nor any stash of your
+own. Your `feedback.json` isn't tracked by git, so it's never touched.
+
 ## The lobby
 
 You arrive in a locker room you can walk around in, with everyone else who

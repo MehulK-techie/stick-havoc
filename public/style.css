@@ -144,6 +144,20 @@ body.touch #keysBtn { display: none; }
 #sRows .opts button:disabled { opacity: 1; cursor: default; }
 #sRows .opts button:disabled:not(.on) { opacity: 0.4; }
 #settings > button { width: 100%; margin-top: 8px; }
+/* the repo links: on the winner's card and in the menu */
+.repos { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+.repos a { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 12px; border-radius: 999px;
+           border: 1px solid var(--line-2); color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 600; }
+.repos a:hover { border-color: var(--accent); }
+.repos a small { color: var(--dim); font-weight: 500; font-size: 10px; }
+#menu { background: rgba(15, 20, 32, 0.98); position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 11;
+        padding: 18px 20px; width: min(380px, calc(100vw - 24px)); }
+#menu h2 { margin: 0 0 2px; font-size: 18px; }
+#menu .sub { color: var(--dim); font-size: 12px; margin: 0 0 12px; }
+#menu > button { display: block; width: 100%; margin-top: 6px; }
+#menu .primary { font-weight: 700; background: rgba(34, 211, 238, 0.16); border-color: var(--accent); }
+#menu .repos { flex-direction: column; align-items: stretch; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+#menu .repos a { border-radius: 10px; }
 /* feedback: the corner button (lobby only) and its window */
 #fbBtn { position: fixed; right: 12px; bottom: 12px; z-index: 6; font-size: 12px; font-weight: 600; padding: 6px 10px; }
 body.in-match #fbBtn, body.touch #fbBtn { display: none; }

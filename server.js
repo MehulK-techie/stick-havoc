@@ -541,6 +541,8 @@ function lobbyTick(dt) {
 
 function matchTick(dt) {
     const m = match;
+    if (m.paused)                         // 1P, menu open: the whole match holds still
+        return;
     m.phaseT += dt;
     ensureBot();
     if (m.phase === 'waiting') {
@@ -646,7 +648,7 @@ function snapshot() {
         tl: m && m.timeLimit ? Math.max(0, Math.ceil(m.timeLimit - m.clock)) : null,
         arcade: m && m.arcade ? {stage: m.arcade.stage + 1, of: Bot.LADDER.length, player: m.arcade.player,
             t: Math.round((Date.now() - m.arcade.t0) / 1000)} : null,
-        target: m ? m.target : sel.target, version: VERSION, sandbox: !!(m && m.sandbox),
+        target: m ? m.target : sel.target, version: VERSION, sandbox: !!(m && m.sandbox), paused: !!(m && m.paused),
         an: w.anvils.map(a => [Math.round(a.x), Math.round(a.y)]),
         q: m ? m.queue : [], act: m ? m.active : [],
         wins: m ? [...m.roundWins] : [],
@@ -834,8 +836,12 @@ wss.on('connection', (ws, req) => {
             Object.hasOwn(SANDBOX.crates, m.crates) && CHOICES.map.includes(m.map) && CHOICES.target.includes(m.target) &&
             [1, 2, 3].includes(m.bots)) {
             startSandbox(id, m);
+        } else if (m.t === 'pause' && scene === 'match' && (match.sandbox || match.arcade) &&
+            (match.sandbox || match.arcade).player === id) {
+            match.paused = !!m.on;               // (only a 1P match: with others in the room it goes on)
         } else if (m.t === 'restart' && scene === 'match' && (match.sandbox || match.arcade) &&
             (match.sandbox || match.arcade).player === id && ['countdown', 'fight', 'ko', 'end'].includes(match.phase)) {
+            match.paused = false;
             restartSolo();
         } else if (m.t === 'console' && isHost && scene === 'lobby' && (me.near === 'console' || m.do === 'start')) {
             // the host's console: Q cycles the mode, Tab the map, Start starts
@@ -904,4 +910,6 @@ server.listen(PORT, '0.0.0.0', () => {
         qrcodeTerminal.generate(urls[0].url, {small: true});
     }
     console.log(`  (this computer: http://localhost:${PORT})\n`);
+    console.log('  ⚡ Stick Havoc         https://github.com/MehulK-techie/stick-havoc.git');
+    console.log('  🐧 Fedora Workstation  https://github.com/MehulK-techie/fedora-workstation-config.git\n');
 });

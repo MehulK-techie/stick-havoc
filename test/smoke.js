@@ -193,6 +193,9 @@ async function brawl(fighters, ms) {
         counts.join() === '3,2,1,0');
     check('two in the ring, one queued', last.act.length === 2 && last.q.length === 1);
     await until(() => last.ph === 'fight');
+    a.send({t: 'pause', on: true});
+    await sleep(300);
+    check('with others in the room, nobody can pause the match', !last.paused);
     // ---------------- King of the Hill
     seen = new Set();
     const fighters = [a, b, c].filter(x => last.act.includes(x.id));
@@ -304,6 +307,13 @@ async function brawl(fighters, ms) {
         last.sandbox, 3000) && P.ARENAS.includes(last.map) && last.act.length === 4 &&
         b.roster.list.filter(p => p.bot).length === 3);
     await until(() => last.ph === 'fight', 6000);
+    b.send({t: 'pause', on: true});
+    await sleep(200);
+    const frozen = JSON.stringify(last.f), pt = last.pt;
+    await sleep(600);
+    check('Esc in 1P pauses: the match holds still', last.paused && last.pt === pt && JSON.stringify(last.f) === frozen);
+    b.send({t: 'pause', on: false});
+    check('and resumes', await until(() => !last.paused && last.pt !== pt, 2000));
     evs = [];
     b.send({t: 'restart'});
     check('R: the round restarts at once, with its countdown', await until(() => evs.some(x => x.type === 'restart') &&

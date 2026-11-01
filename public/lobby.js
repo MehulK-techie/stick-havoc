@@ -118,7 +118,7 @@ const Lobby = (() => {
     function console_(ctx, t) {
         const {x, y} = ST.console;
         const sel = state.sel || {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: 10};
-        const sw = 640, sh = 276, sx = x - sw / 2, sy = 50;
+        const sw = 640, sh = 318, sx = x - sw / 2, sy = 50;
         ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
         rounded(ctx, sx, sy, sw, sh, 14);
         ctx.fill();
@@ -152,15 +152,24 @@ const Lobby = (() => {
             ctx.fillStyle = accent || '#e5e7eb';
             ctx.fillText(v, rx, ry + 19);
         });
-        // the footer: this game's repo, and the workstation setup it ships with
+        // the footer: this game's repo, and the workstation setup it ships with, as two lit pills
         ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
-        ctx.fillRect(sx + 26, sy + sh - 34, sw - 52, 1);
-        ctx.font = '700 10px ui-monospace, monospace';
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText('⚡ github.com/MehulK-techie/stick-havoc', sx + 26, sy + sh - 15);
-        ctx.textAlign = 'right';
-        ctx.fillText('🐧 MK Linux Workstation · fedora-workstation-config', sx + sw - 26, sy + sh - 15);
-        ctx.textAlign = 'left';
+        ctx.fillRect(sx + 26, sy + sh - 74, sw - 52, 1);
+        ctx.font = '700 11px ui-monospace, monospace';
+        [['⚡ Stick Havoc', 'github.com/MehulK-techie/stick-havoc', '#22d3ee'],
+            ['🐧 Fedora Workstation', 'github.com/MehulK-techie/fedora-workstation-config', '#a3e635']].forEach(([name, url, c], i) => {
+            const py = sy + sh - 62 + i * 28, text = `${name}: ${url}`, pw = ctx.measureText(text).width + 24;
+            rounded(ctx, sx + 26, py, pw, 22, 11);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.fill();
+            ctx.strokeStyle = c;
+            ctx.globalAlpha = 0.6;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#e5e7eb';
+            ctx.fillText(text, sx + 38, py + 15);
+        });
         if (qr) {
             const n = qr.length, cell = Math.floor(150 / n), size = cell * n, qx = sx + sw - size - 32, qy = sy + 30;
             ctx.fillStyle = '#f8fafc';

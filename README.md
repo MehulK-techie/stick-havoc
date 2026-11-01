@@ -103,7 +103,15 @@ has joined (their names over their heads). Three stations:
     Frequent (crates three times as often); first to 3, 5 or 7.
 
   In either, `R` restarts the round at once (after the last round, the
-  whole match), and `Esc` or Back to lobby in the corner leaves.
+  whole match; after an arcade run, the ladder from the bottom). `Esc`
+  pauses: the match holds still behind a menu (Resume, Restart, Controls,
+  Move list, Back to lobby).
+
+- **Esc in any match** opens the same menu (with others in the room the
+  match goes on behind it; Back to lobby is the host's), with links to both
+  repos: ⚡ Stick Havoc and 🐧 Fedora Workstation. The winner's card carries
+  the same two links, the stadium screen shows them as two lit pills, and
+  the host's terminal prints both when the server starts.
 - **Feedback & Bugs** (bottom right of the lobby): a bug report, a feature
   request or general feedback, up to 1000 characters. It's saved on the
   host's computer in `feedback.json` next to `server.js` (author, category,
@@ -138,7 +146,8 @@ has joined (their names over their heads). Three stations:
 | Use a station · pick up / throw a weapon | `E` | E |
 | Move list | `Shift` (or ? Moves) | ? (top right) |
 | Practice bot (lobby) · its difficulty · 1P Solo (host, at the console) | `P` · `B` · `P` | |
-| 1P: restart the round · leave | `R` · `Esc` | |
+| 1P: restart the round · pause (menu) | `R` · `Esc` | |
+| Menu: controls, move list, back to lobby, repo links | `Esc` (in a match) | |
 | Punch where you point | left click | |
 | Emojis 🔥 💀 🤡 🚀 · vote | `5`–`8` · `1` `2` | the buttons |
 

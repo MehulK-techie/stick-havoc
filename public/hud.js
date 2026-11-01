@@ -355,6 +355,46 @@ const Hud = (() => {
     });
     $('sSolo').addEventListener('click', () => openSolo());
 
+    // ------------------------------------------------------------ the menu (Esc in a match)
+    let menuSolo = false;
+    const isMenuOpen = () => !$('menu').classList.contains('hidden');
+
+    // solo: a 1P match (it pauses); canLeave: the host or the 1P player (Back to lobby)
+    function openMenu(solo, canLeave) {
+        menuSolo = solo;
+        $('mTitle').textContent = solo ? 'Paused' : 'Menu';
+        $('mNote').textContent = solo ? 'The match holds still until you resume.' :
+            'The match goes on around you: others are still playing.';
+        $('mRestart').classList.toggle('hidden', !solo);
+        $('mLobby').classList.toggle('hidden', !canLeave);
+        $('menu').classList.remove('hidden');
+        if (solo)
+            send({t: 'pause', on: true});
+        Sfx.play('open');
+    }
+
+    function closeMenu() {
+        if (!isMenuOpen())
+            return;
+        $('menu').classList.add('hidden');
+        if (menuSolo)
+            send({t: 'pause', on: false});
+    }
+    $('mResume').addEventListener('click', closeMenu);
+    $('mRestart').addEventListener('click', () => {
+        closeMenu();
+        send({t: 'restart'});
+    });
+    $('mKeys').addEventListener('click', () => openControls());
+    $('mMoves').addEventListener('click', () => {
+        closeMenu();
+        toggleMoves(true);
+    });
+    $('mLobby').addEventListener('click', () => {
+        closeMenu();
+        send({t: 'lobby'});
+    });
+
     // ------------------------------------------------------------ feedback & bugs
     let fbKind = 'bug';
     const isFeedbackOpen = () => !$('feedback').classList.contains('hidden');
@@ -428,7 +468,7 @@ const Hud = (() => {
         const alone = isAlone(true);
         $('oSandbox').disabled = !alone;
         $('oNote').textContent = alone ? `Any arena, any mode, against bots (${solo.level}: ${LEVELS[solo.level]}). ` +
-            'R restarts the round; Esc leaves.' : 'For when you are the only one in the room.';
+            'R restarts the round; Esc pauses.' : 'For when you are the only one in the room.';
     }
 
     function openSolo() {
@@ -576,6 +616,6 @@ const Hud = (() => {
         init(sender) { send = sender; },
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
         openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo, isControlsOpen, openControls,
-        openSolo, closeSolo, isSoloOpen, isFeedbackOpen, closeFeedback, feedbackAnswer,
+        openSolo, closeSolo, isSoloOpen, isFeedbackOpen, closeFeedback, feedbackAnswer, openMenu, closeMenu, isMenuOpen,
     };
 })();

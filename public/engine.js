@@ -122,6 +122,7 @@
         if (s.scene === 'lobby' && scene !== 'lobby') {
             hidePodium();
             endCinema();
+            Hud.closeMenu();
         }
         scene = s.scene;
         if (s.scene === 'lobby') {
@@ -1313,7 +1314,7 @@
 
     function pushInput(force) {
         const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() || Hud.isSoloOpen() ||
-            Hud.isFeedbackOpen() ? 0 : bits();
+            Hud.isFeedbackOpen() || Hud.isMenuOpen() ? 0 : bits();
         if (sparring)
             return Spar.input(k, mouseBits ? aim : null);
         if (force || k !== sentK || aim !== sentAim) {
@@ -1395,13 +1396,14 @@
             return;
         }
         if (e.code === 'Escape') {
-            const menu = Hud.isSettingsOpen() || Hud.isSoloOpen() ||
+            const open = Hud.isSettingsOpen() || Hud.isSoloOpen() || Hud.isMenuOpen() ||
                 !document.getElementById('moves').classList.contains('hidden');
             Hud.toggleMoves(false);
             Hud.closeSettings();
             Hud.closeSolo();
-            if (sandbox && !menu && !e.repeat)     // nothing to close: Esc leaves the sandbox
-                sendMsg({t: 'lobby'});
+            Hud.closeMenu();
+            if (scene === 'match' && !open && !e.repeat)   // nothing to close: the menu (in 1P, a pause)
+                Hud.openMenu(solo, solo || myId === hostId);
             return;
         }
         if (Hud.isSettingsOpen()) {
@@ -1421,6 +1423,7 @@
             return;
         }
         if (e.code === 'KeyR' && scene === 'match' && solo && !e.repeat) {   // 1P: the round again, now
+            Hud.closeMenu();
             sendMsg({t: 'restart'});
             return;
         }

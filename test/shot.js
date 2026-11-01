@@ -101,11 +101,13 @@ async function shot(ctx, name) {
         await sleep(500);
         await shot(ctx, 'moves.png');
         await tap('\uE008');
+        await hold('d', 450);              // (off the console: P there is the host's 1P window)
         await tap('p');                    // P: practice against the bot, in this browser
         await sleep(4500);
         await shot(ctx, 'spar.png');
         await tap('\uE00C');              // Esc: back to the lobby
         await sleep(800);
+        await hold('a', 450);              // back to the console
         for (let i = 0; i < 4; i++)
             await tap('\uE004');          // Tab x4 at the console: the Magma Foundry
         await tap('e');

@@ -85,10 +85,10 @@ const Lobby = (() => {
         ctx.fill();
         ctx.restore();
         label(ctx, 'WARDROBE', x, y - 226);
-        neonSign(ctx, t, x, y - 280);
+        neonSign(ctx, t, x, y - 292);
     }
 
-    // CUSTOMIZE in neon, 70 px above the mirror (over the ledge), with an arrow blinking down at it
+    // CUSTOMIZE in neon, above the mirror (over the ledge, clear of the station's prompt), its arrow blinking down
     function neonSign(ctx, t, x, y) {
         const flicker = Math.sin(t * 2.4) * 0.5 + 0.5, dead = (t % 7) > 6.82;   // a slow pulse; now and then a stutter
         ctx.save();

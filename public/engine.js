@@ -9,6 +9,7 @@
 
     // ------------------------------------------------------------ state
     let ws = null, myId = null, hostId = null, choices = null, scene = 'lobby';
+    let colors = [];                    // [[name, hex]] from the server
     let sparring = false;               // practice against the bot, simulated in this browser (spar.js)
     let sandbox = false;                // a 1P sandbox match is on (Esc goes back to the lobby)
     let serverNear = null;              // the station the server says you stand at (kept through sparring)
@@ -45,6 +46,7 @@
                 Hud.setRoster(roster, myId);
             } else if (m.type === 'welcome') {
                 myId = m.id;
+                colors = m.colors;
                 Hud.setOptions({colors: m.colors, hats: m.hats, trails: m.trails});
                 choices = m.choices;
                 Lobby.state.version = 'v' + m.version;
@@ -54,10 +56,17 @@
                 Lobby.state.near = serverNear = m.station;
                 if (m.station)
                     Sfx.play('near');
+            } else if (m.type === 'colorAssigned') {   // the saved colour was taken: this one is yours now
+                const named = (colors.find(c => c[1] === m.color) || ['a free colour'])[0];
+                Hud.toast(`Notice: Saved color was taken, assigned ${named}!`, 5000);
+                try {
+                    const saved = JSON.parse(localStorage.getItem('sh-look') || '{}');
+                    localStorage.setItem('sh-look', JSON.stringify(Object.assign(saved, {color: m.color})));
+                } catch { /* private window */ }
             } else if (m.type === 'colorTaken') {
                 Hud.toast(`That colour is ${m.by}'s: pick a free one`);
             } else if (m.type === 'full') {
-                Hud.toast('The room is full (10 players)', 6000);
+                Hud.toast('The room is full', 6000);
             }
         };
         ws.onclose = () => {
@@ -82,7 +91,7 @@
         } catch { /* private window */ }
         const name = params.get('name') || (saved && saved.name);
         if (saved || name)
-            sendMsg(Object.assign({t: 'look'}, saved || {}, {name: name || ''}));
+            sendMsg(Object.assign({t: 'look'}, saved || {}, {name: name || '', restore: true}));
     }
 
     function onSnapshot(s) {

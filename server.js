@@ -643,7 +643,9 @@ const colorOwner = color => [...players.values()].find(p => p.color === color &&
 function applyLook(p, m) {
     if (COLOR_VALUES.includes(m.color) && m.color !== p.color) {
         const owner = colorOwner(m.color);
-        if (owner && owner !== p) {
+        if (owner && owner !== p && m.restore) {   // a saved colour someone already wears: keep the free one given
+            send(p.ws, {type: 'colorAssigned', color: p.color, remapped: true, wanted: m.color});
+        } else if (owner && owner !== p) {
             send(p.ws, {type: 'colorTaken', color: m.color, by: owner.name});
         } else {
             p.color = m.color;

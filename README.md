@@ -43,7 +43,10 @@ has joined (their names over their heads). Three stations:
   Bandit Eyepatch, Chef Hat, Cat Ears, Cyber Beanie, Viking Horns) and a
   dash trail (ghost afterimages, neon sparkles, shadow smoke, rainbow prism,
   pixel dust). Everyone sees the change at once; your look is remembered on
-  that device.
+  that device. If your remembered colour is already being worn when you
+  come back (a second tab, or someone took it), you keep the free colour
+  you were given and get a notice (`Notice: Saved color was taken,
+  assigned Lime!`); that becomes your remembered colour.
 - **Dojo** (right of the console), or `P` anywhere in the lobby: spar the
   practice bot, alone, in your own browser (nothing anyone else does is
   affected; to the room you're a ghost meanwhile). It guards your strings

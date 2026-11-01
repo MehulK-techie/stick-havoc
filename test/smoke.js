@@ -19,9 +19,10 @@ let seen = new Set(), last = null, failures = 0, evs = [];
 
 function client(name) {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
-    const c = {ws, id: null, name, roster: null, near: null};
+    const c = {ws, id: null, name, roster: null, near: null, got: []};
     ws.on('message', d => {
         const m = JSON.parse(d);
+        if (m.type !== 's') c.got.push(m);
         if (m.type === 'welcome') c.id = m.id;
         if (m.type === 'roster') c.roster = m;
         if (m.type === 'near') c.near = m.station;
@@ -85,6 +86,13 @@ async function brawl(fighters, ms) {
     // ---------------- the lobby
     check('everyone arrives in the lobby, with the dummy', last.scene === 'lobby' && last.f.length === 4 &&
         last.f.some(f => f[0] === 0));
+    // a second tab restoring a saved colour someone already wears: given a free one, and told
+    const mine = a.roster.list.find(p => p.id === a.id).color;
+    c.send({t: 'look', color: mine, restore: true});
+    await sleep(300);
+    const cy = c.roster.list.find(p => p.id === c.id).color;
+    check('a saved colour already taken: a free one instead, with a notice', cy !== mine &&
+        c.got.some(m => m.type === 'colorAssigned' && m.remapped && m.color === cy));
     const x0 = a.me()[1];
     a.send({t: 'in', k: P.IN.RIGHT}); await sleep(500); a.send({t: 'in', k: 0}); await sleep(200);
     check('you can walk around the lobby', a.me()[1] > x0 + 50);

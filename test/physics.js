@@ -458,5 +458,24 @@ function run(w, frames, inputs) {
     run(w3, 9, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
     check('1v1 at match point: the deciding K.O. goes to 0.2x', w3.koSlow > 0 && w3.timeScale < 0.5);
 }
+{   // the foundry's magma: launched high and in control, you steer back to a platform without falling in again
+    let back = 0, burns = 0;
+    for (let n = 0; n < 20; n++) {
+        const w = world('magma'); w.time = n * 0.37; run(w, 1, {});
+        const f = fighter(w, 1, 200 + n * 60, w.lavaY + 10); f.ground = false; f.st = 'air';
+        let landed = false;
+        for (let i = 0; i < 600 && !landed; i++) {
+            const plat = w.plats.filter(p => p.alive && p.y < w.lavaY - 20)
+                .reduce((a, p) => Math.abs(p.x + p.w / 2 - f.x) < Math.abs(a.x + a.w / 2 - f.x) ? p : a);
+            const dir = plat.x + plat.w / 2 > f.x ? P.IN.RIGHT : P.IN.LEFT;
+            f.hp = 100;                                // (testing the steering, not the damage)
+            burns += run(w, 1, {1: {k: dir | (f.vy > 200 && i % 6 === 0 ? P.IN.JUMP : 0)}}).filter(e => e.type === 'lava').length;
+            landed = f.ground && f.plat && f.plat.y < w.lavaY - 20;
+        }
+        back += landed ? 1 : 0;
+    }
+    check(`off the magma: back on a platform every time, burned once (${back}/20, ${(burns / 20).toFixed(2)} burns)`,
+        back === 20 && burns / 20 <= 1.1);
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

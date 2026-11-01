@@ -128,7 +128,7 @@
             ground: false, jumps: 2, st: 'air', atk: null, combo: 0, comboT: 0, stun: 0, inv: 0,
             shield: C.SPAWN_SHIELD, dashT: 0, dashCd: 0, airDash: true, ledge: null, ledgeT: 0, ledgeCd: 0, juggle: 0,
             spin: 0, spinV: 0, drop: 0, wallCd: 0, koT: 0, lastHit: null, prev: 0,
-            blocking: false, blockT: 0, guardHits: 0, guardT: 0, weapon: null, comboN: 0, comboDmg: 0, comboBy: null};
+            blocking: false, blockT: 0, guardHits: 0, guardT: 0, weapon: null, comboN: 0, comboDmg: 0, comboBy: null, diT: 0};
     }
 
     // the lobby's punching dummy: springs back to where it stands, never falls over for good
@@ -479,7 +479,7 @@
     function control(w, f, inp, dt) {
         const k = inp.k | 0, pressed = k & ~f.prev;
         f.prev = k;
-        for (const key of ['stun', 'inv', 'shield', 'dashCd', 'comboT', 'drop', 'wallCd', 'ledgeCd', 'guardT'])
+        for (const key of ['stun', 'inv', 'shield', 'dashCd', 'comboT', 'drop', 'wallCd', 'ledgeCd', 'guardT', 'diT'])
             f[key] = Math.max(0, f[key] - dt);
         if (f.guardT <= 0)
             f.guardHits = 0;
@@ -548,8 +548,9 @@
             const busy = f.atk ? 0.3 : 1;
             // the sky train's slipstream: in the air you drift backwards
             const wind = !f.ground && MAPS[w.map] && MAPS[w.map].wind ? MAPS[w.map].wind : 0;
-            const target = dir * C.RUN * busy - wind;
-            const acc = f.ground ? (w.hazard === 'ice' ? C.ACC_ICE : C.ACC_GROUND) : C.ACC_AIR;
+            const di = !f.ground && f.diT > 0;      // (off the lava: steer hard)
+            const target = dir * C.RUN * busy * (di ? 1.5 : 1) - wind;
+            const acc = f.ground ? (w.hazard === 'ice' ? C.ACC_ICE : C.ACC_GROUND) : C.ACC_AIR * (di ? 1.8 : 1);
             f.vx += Math.max(-acc * dt, Math.min(acc * dt, target - f.vx));
             if (dir && !f.atk)
                 f.face = dir;
@@ -1155,9 +1156,12 @@
 
     // lava: the foundry's rises and falls; in Floor Is Lava the platforms
     // themselves turn hot every 30 s. Touch it and you're launched upwards.
+    // lava: launched high, but in control: jumps and air dash back, and 1.5 s of strong air steering (DI)
+    // so you can fight your way back to a platform instead of bouncing in the pool
     function burn(w, f, why) {
-        f.vy = -1250; f.ground = false; f.st = 'tumble'; f.spinV = 10 * (Math.random() < 0.5 ? -1 : 1); f.stun = 0.45;
-        f.atk = null; f.inv = Math.max(f.inv, 0.5);
+        f.vy = -1250; f.ground = false; f.st = 'air'; f.spin = 0; f.stun = 0;
+        f.atk = null; f.inv = Math.max(f.inv, 0.5); f.ledge = null; f.mantle = null;
+        f.jumps = 2; f.airDash = true; f.diT = 1.5;
         w.events.push({type: 'lava', x: Math.round(f.x), y: Math.round(f.y), why});
         if (!w.noDamage) {
             f.hp = Math.max(0, f.hp - 12);

@@ -198,7 +198,7 @@ const Hud = (() => {
     // ------------------------------------------------------------ the match panels
     function match(s, roster, myId) {
         $('iMode').textContent = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag',
-            arcade: '1P Arcade', lava: 'Floor Is Lava', spar: 'Practice'}[s.mode] || '';
+            arcade: '1P Arcade', lava: 'Floor Is Lava', team: 'Team Brawl', chrono: 'Chrono Shift', spar: 'Practice'}[s.mode] || '';
         $('iMap').textContent = Physics.MAPS[s.map] ? Physics.MAPS[s.map].name : '';
         $('iRound').textContent = s.spar ? `Bot: ${s.spar} · B switches · Esc leaves` :
             s.arcade ? `Stage ${s.arcade.stage} of ${s.arcade.of} · ${s.arcade.t}s` :
@@ -452,6 +452,47 @@ const Hud = (() => {
     const LEVELS = {easy: 'casual, slow to react', medium: 'strings and combos', hard: 'guards, parries and techs',
         demon: 'frame-perfect juggles and parries'};
     const solo = {map: 'rooftops', mode: 'duel', bots: 3, level: 'medium', crates: 'normal', target: 3};
+    // the host's own names for the bots, slot by slot, kept in this browser
+    const BOT_NAMES = 'stick_havoc_bot_names';
+    let sandboxBots = {}, botNames = ['', '', ''];
+    try {
+        const saved = JSON.parse(localStorage.getItem(BOT_NAMES) || '[]');
+        if (Array.isArray(saved))
+            botNames = [0, 1, 2].map(i => typeof saved[i] === 'string' ? saved[i].slice(0, 16) : '');
+    } catch { /* a private window: unnamed */ }
+
+    // a row of the bots this sandbox would bring, each name editable in place
+    function botNamesRow() {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = 'Bot names';
+        const opts = document.createElement('div');
+        opts.className = 'opts names';
+        const count = solo.mode === 'duel' ? 1 : solo.bots;
+        (sandboxBots[solo.level] || []).slice(0, count).forEach((style, i) => {
+            const input = document.createElement('input');
+            input.maxLength = 16;
+            input.placeholder = style;
+            input.value = botNames[i];
+            input.title = 'Click to rename this bot';
+            input.addEventListener('input', () => {
+                botNames[i] = input.value.trim();
+                try {
+                    localStorage.setItem(BOT_NAMES, JSON.stringify(botNames));
+                } catch { /* private window: this session only */ }
+            });
+            input.addEventListener('keydown', e => {
+                e.stopPropagation();          // (typing a name: not P for sparring, not Esc to close)
+                if (e.key === 'Enter' || e.key === 'Escape')
+                    input.blur();
+            });
+            opts.appendChild(input);
+        });
+        row.append(label, opts);
+        return row;
+    }
     const isSoloOpen = () => !$('solo').classList.contains('hidden');
 
     function renderSolo() {
@@ -467,6 +508,7 @@ const Hud = (() => {
                 });
             rows.appendChild(row);
         }
+        rows.appendChild(botNamesRow());
         const alone = isAlone(true);
         $('oSandbox').disabled = !alone;
         $('oNote').textContent = alone ? `Any arena, any mode, against bots (${solo.level}: ${LEVELS[solo.level]}). ` +
@@ -489,7 +531,7 @@ const Hud = (() => {
         closeSolo();
     });
     $('oSandbox').addEventListener('click', () => {
-        send(Object.assign({t: 'sandbox'}, solo, {bots: solo.mode === 'duel' ? 1 : solo.bots}));
+        send(Object.assign({t: 'sandbox'}, solo, {bots: solo.mode === 'duel' ? 1 : solo.bots, names: botNames}));
         closeSolo();
     });
     $('sClose').addEventListener('click', closeSettings);
@@ -618,6 +660,6 @@ const Hud = (() => {
         init(sender) { send = sender; },
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
         openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo, isControlsOpen, openControls,
-        openSolo, closeSolo, isSoloOpen, isFeedbackOpen, closeFeedback, feedbackAnswer, openMenu, closeMenu, isMenuOpen,
+        openSolo, closeSolo, isSoloOpen, setSandboxBots: b => { sandboxBots = b; }, isFeedbackOpen, closeFeedback, feedbackAnswer, openMenu, closeMenu, isMenuOpen,
     };
 })();

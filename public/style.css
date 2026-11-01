@@ -192,6 +192,9 @@ body.in-match #fbBtn, body.touch #fbBtn { display: none; }
 #oRows .opts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 #oRows .opts button { font-size: 12px; padding: 4px 8px; }
 #oRows .opts button:disabled:not(.on) { opacity: 0.35; }
+#oRows .names input { width: 104px; font: inherit; font-size: 12px; padding: 4px 8px; color: var(--text); border-radius: 999px;
+                      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line-2); text-align: center; }
+#oRows .names input:focus { outline: none; border-color: var(--accent); }
 #settings .primary { font-weight: 700; background: rgba(34, 211, 238, 0.16); border-color: var(--accent); margin-top: 14px; }
 /* the combo counter, at the screen's left margin */
 #combo { position: fixed; left: 16px; top: 38%; z-index: 5; pointer-events: none; font-weight: 800; }

@@ -332,9 +332,11 @@ async function brawl(fighters, ms) {
         last.ph === 'countdown', 2000) && last.scene === 'match' && last.act.length === 4);
     b.send({t: 'lobby'});
     await until(() => last.scene === 'lobby', 3000);
-    b.send({t: 'sandbox', mode: 'rumble', level: 'demon', crates: 'off', map: 'colosseum', target: 3, bots: 2});
-    check('Demon, two of them: numbered, on the Colosseum', await until(() => last.scene === 'match' && last.act.length === 3,
-        3000) && last.map === 'colosseum' && ['Demon', 'Demon 2'].every(n => b.roster.list.some(p => p.bot && p.name === n)));
+    b.send({t: 'sandbox', mode: 'rumble', level: 'demon', crates: 'off', map: 'colosseum', target: 3, bots: 2,
+        names: ['<b>Kazuya</b>', '']});
+    check('Demon, two of them: the host\'s name for one (cleaned), the other numbered', await until(() => last.scene === 'match' &&
+        last.act.length === 3, 3000) && last.map === 'colosseum' &&
+        ['bKazuyab', 'Demon 2'].every(n => b.roster.list.some(p => p.bot && p.name === n)));
     b.send({t: 'lobby'});
     check('Esc / the corner button: back to the lobby, the bots gone', await until(() => last.scene === 'lobby' &&
         !b.roster.list.some(p => p.bot), 3000));

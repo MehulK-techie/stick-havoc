@@ -89,8 +89,9 @@ has joined (their names over their heads). Three stations:
   move until `FIGHT!`. Every round starts the same way. Random and Banger
   Shuffle are settled by the server the moment the host presses start. (`Q` / `Tab` cycle mode and map without the
   drawer.)
-- **1P Solo** (the host: `P` at the console, or the settings drawer's
-  `🎮 1P Solo` button) opens a window with two choices:
+- **1P Solo** (the host: `O` anywhere in the lobby, or the settings
+  drawer's `🎮 1P Solo` button; `P` is the quick spar) opens a window with
+  two choices:
   - **Arcade Ladder**: five computer opponents in a row, one round each, on
     the arenas in turn: Rookie Stick (slow, basic), Acrobat (jumps and dive
     kicks), Brawler (relentless strings, dash cancels), Ninja (guards and
@@ -103,7 +104,10 @@ has joined (their names over their heads). Three stations:
     bots; Easy (casual), Medium (strings and combos), Hard (guards, parries
     and techs: the practice bot's defence) or Demon (30 ms reactions,
     parries, techs and juggles, and never lets up); weapons Off, On or
-    Frequent (crates three times as often); first to 3, 5 or 7.
+    Frequent (crates three times as often); first to 3, 5 or 7. The bots it
+    would bring are listed by name: click one to rename it (`Kazuya`,
+    `Dorm Rival`); the names are kept in that browser
+    (`stick_havoc_bot_names`) and used whenever you start a sandbox.
 
   In either, `R` restarts the round at once (after the last round, the
   whole match; after an arcade run, the ladder from the bottom). `Esc`
@@ -148,7 +152,7 @@ has joined (their names over their heads). Three stations:
 | Grab & throw (goes through a guard) | `G` | G |
 | Use a station · pick up / throw a weapon | `E` | E |
 | Move list | `Shift` (or ? Moves) | ? (top right) |
-| Practice bot (lobby) · its difficulty · 1P Solo (host, at the console) | `P` · `B` · `P` | |
+| Practice bot (lobby) · its difficulty · 1P Solo window (host) | `P` · `B` · `O` | |
 | 1P: restart the round · pause (menu) | `R` · `Esc` | |
 | Menu: controls, move list, back to lobby, repo links | `Esc` (in a match) | |
 | Punch where you point | left click | |

@@ -846,7 +846,9 @@ wss.on('connection', (ws, req) => {
     else if (match.mode === 'koth')
         match.queue.push(id);
     send(ws, {type: 'welcome', id, colors: P.COLORS, hats: P.HATS, trails: P.TRAILS, modes: P.MODES,
-        maps: P.ARENAS.map(k => [k, P.MAPS[k].name]), choices: CHOICES, version: VERSION});
+        maps: P.ARENAS.map(k => [k, P.MAPS[k].name]), choices: CHOICES, version: VERSION,
+        // (the 1P sandbox's line-up per difficulty, by name: the window shows who you'd be renaming)
+        sandboxBots: Object.fromEntries(Object.entries(SANDBOX.level).map(([k, v]) => [k, v.map(s => Bot.STYLES[s].name)]))});
     roster();
     let budget = 120, last = Date.now();
     ws.on('message', raw => {

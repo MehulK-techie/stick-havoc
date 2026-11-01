@@ -56,6 +56,7 @@
                 colors = m.colors;
                 Hud.setOptions({colors: m.colors, hats: m.hats, trails: m.trails});
                 choices = m.choices;
+                Hud.setSandboxBots(m.sandboxBots || {});
                 Lobby.state.version = 'v' + m.version;
                 $('ver').textContent = 'v' + m.version;
                 restoreLook();
@@ -1503,11 +1504,15 @@
             }
             return;
         }
-        if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {
-            if (Lobby.state.near === 'console' && myId === hostId)
-                Hud.openSolo();                  // the host at the console: 1P Solo
+        if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {   // P: a quick spar with the practice bot
+            startSpar();
+            return;
+        }
+        if (e.code === 'KeyO' && scene === 'lobby' && !e.repeat) {   // O: the 1P window (the host's to start)
+            if (myId === hostId)
+                Hud.openSolo();
             else
-                startSpar();                     // anyone else, anywhere: practice against the bot
+                Hud.toast('1P Solo is the room host\'s to start');
             return;
         }
         if (e.code === 'KeyR' && scene === 'match' && solo && !e.repeat) {   // 1P: the round again, now

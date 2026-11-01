@@ -77,7 +77,13 @@ const Sfx = (() => {
         crumble: () => noise(0.7, 'lowpass', 500, 60, 0.6),
         clang: () => { for (const f of [523, 787, 1046, 1410]) tone('triangle', f, f * 0.98, 0.5, 0.18); },
         anvil: () => { sounds.clang(); tone('sine', 80, 35, 0.3, 0.8); },
-        count: () => tone('sine', 660, 660, 0.18, 0.4),
+        count3: () => tone('sine', 660, 660, 0.2, 0.4),             // the countdown: three chimes, rising
+        count2: () => tone('sine', 784, 784, 0.2, 0.4),
+        count1: () => tone('sine', 988, 988, 0.22, 0.42),
+        gong: () => {                          // FIGHT!: a deep struck gong
+            tone('sine', 98, 92, 1.6, 0.9); tone('sine', 196, 188, 1.2, 0.3); tone('triangle', 294, 290, 0.8, 0.12);
+            noise(0.25, 'lowpass', 700, 90, 0.45);
+        },
         fight: () => { for (const [f, d] of [[523, 0], [659, 0.05], [784, 0.1], [1046, 0.15]]) tone('sawtooth', f, f, 0.4, 0.12, d); },
         ko: () => {
             tone('sine', 70, 30, 0.9, 1.0); noise(0.6, 'lowpass', 2000, 80, 0.6);

@@ -153,10 +153,15 @@ async function brawl(fighters, ms) {
     const full = await new Promise(r => { d.on('message', m => JSON.parse(m).type === 'full' && r(true)); setTimeout(() => r(false), 1500); });
     check('the player limit turns a 4th player away', full);
     a.send({t: 'settings', key: 'limit', value: 10}); await sleep(150);
+    evs = [];
     a.send({t: 'console', do: 'start'});
     await sleep(300);
-    check('start: a countdown in the lobby', last.starting !== null);
-    check('then the match, on the chosen map', await until(() => last.scene === 'match') && last.map === 'reactor');
+    check('start: straight onto the chosen map', await until(() => last.scene === 'match') && last.map === 'reactor');
+    await until(() => last.ph === 'fight', 6000);
+    // (every client logs every event: three of each, in order)
+    const counts = evs.filter(x => x.type === 'count').map(x => x.n).filter((n, i, all) => i === 0 || n !== all[i - 1]);
+    check('one countdown, from the server: GET READY, 3, 2, 1, FIGHT!', evs.some(x => x.type === 'getReady') &&
+        counts.join() === '3,2,1,0');
     check('two in the ring, one queued', last.act.length === 2 && last.q.length === 1);
     await until(() => last.ph === 'fight');
     // ---------------- King of the Hill

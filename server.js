@@ -23,6 +23,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const TPS = 30;
 const MAX_PLAYERS = 15;
 const VOTE_EVERY = Number(process.env.VOTE_EVERY) || 45, VOTE_FOR = 5, HAZARD_FOR = 15;   // seconds
+const GET_READY = 0.5;                // seconds of GET READY before the 3, 2, 1
 const BOMB_FUSE = Number(process.env.BOMB_FUSE) || 20;
 const EMOJIS = ['🔥', '💀', '🤡', '🚀'];
 const COLOR_VALUES = P.COLORS.map(c => c[1]);
@@ -262,12 +263,15 @@ function startRound() {
     m.world.matchPoint = m.active.length === 2 && m.mode !== 'bomb' &&
         m.active.every(id => (m.roundWins.get(id) || 0) >= m.target - 1);
     setPhase(m.active.length >= 2 ? 'countdown' : 'waiting');
+    if (m.phase === 'countdown')
+        pendingEvents.push({type: 'getReady', round: m.round});
     roster();
 }
 
 function setPhase(phase) {
     match.phase = phase;
     match.phaseT = 0;
+    match.count = null;
 }
 
 function endRound(forced) {
@@ -491,14 +495,6 @@ function lobbyTick(dt) {
             send(p.ws, {type: 'near', station: near});
         }
     }
-    if (lobby.starting !== undefined) {         // the host pressed START: 3, 2, 1
-        lobby.starting -= dt;
-        if (lobby.starting <= 0) {
-            delete lobby.starting;
-            if (humans().length >= 1)
-                startMatch(lobby.picked);
-        }
-    }
 }
 
 function matchTick(dt) {
@@ -509,8 +505,16 @@ function matchTick(dt) {
         if ((m.mode === 'koth' ? m.active.length + m.queue.length : players.size) >= 2 && m.phaseT > 0.5)
             startRound();
     } else if (m.phase === 'countdown') {
-        if (m.phaseT >= 3)
+        // the one countdown: GET READY while the stage loads (0.5 s), then 3, 2, 1, FIGHT!, each announced
+        // from here, so every browser plays the same chime on the same tick
+        const n = m.phaseT < GET_READY ? 4 : 3 - Math.floor(m.phaseT - GET_READY);
+        if (n <= 0) {
             setPhase('fight');
+            pendingEvents.push({type: 'count', n: 0, text: 'FIGHT!'});
+        } else if (n <= 3 && n !== m.count) {
+            m.count = n;
+            pendingEvents.push({type: 'count', n});
+        }
     } else if (m.phase === 'ko') {
         if (m.phaseT >= 3)
             startRound();
@@ -574,7 +578,7 @@ function snapshot() {
     const bomb = m && m.bomb;
     return {
         type: 's', scene, map: w.map, host: hostId(), ts: r1(w.timeScale),
-        sel, ready: humans().length, max: MAX_PLAYERS, starting: lobby.starting !== undefined ? r1(lobby.starting) : null,
+        sel, ready: humans().length, max: MAX_PLAYERS, starting: null,
         ph: m ? m.phase : 'lobby', pt: m ? r1(m.phaseT) : 0, mode: m ? m.mode : null, round: m ? m.round : 0,
         winner: m ? m.winner : null, champion: m ? m.champion : null,
         hz: w.hazard, hzT: r1(w.hazardT),
@@ -729,9 +733,9 @@ wss.on('connection', ws => {
             Object.hasOwn(CHOICES, m.key) && CHOICES[m.key].includes(m.value)) {   // (own keys only: not "toString")
             sel[m.key] = m.value;                      // everyone's wall screen shows it next tick
             pendingEvents.push({type: 'console'});
-        } else if (m.t === 'arcade' && isHost && scene === 'lobby' && lobby.starting === undefined) {
+        } else if (m.t === 'arcade' && isHost && scene === 'lobby') {
             startArcade(id);
-        } else if (m.t === 'sandbox' && isHost && scene === 'lobby' && lobby.starting === undefined &&
+        } else if (m.t === 'sandbox' && isHost && scene === 'lobby' &&
             humans().length === 1 && Object.hasOwn(SANDBOX.mode, m.mode) && Object.hasOwn(SANDBOX.level, m.level) &&
             Object.hasOwn(SANDBOX.crates, m.crates) && CHOICES.map.includes(m.map) && CHOICES.target.includes(m.target)) {
             startSandbox(id, m);
@@ -741,10 +745,13 @@ wss.on('connection', ws => {
                 sel.mode = CHOICES.mode[(CHOICES.mode.indexOf(sel.mode) + 1) % CHOICES.mode.length];
             } else if (m.do === 'map') {
                 sel.map = CHOICES.map[(CHOICES.map.indexOf(sel.map) + 1) % CHOICES.map.length];
-            } else if (m.do === 'start' && lobby.starting === undefined) {
-                lobby.starting = 3;
-                lobby.picked = resolvePick();          // (Random and Shuffle settled now: the toast names the real ones)
-                pendingEvents.push({type: 'starting', mode: lobby.picked.mode, map: lobby.picked.map});
+            } else if (m.do === 'start') {
+                // straight onto the stage: the match's own countdown is the only one. Random and Shuffle are
+                // settled here, before anyone is told
+                const picked = resolvePick();
+                pendingEvents.push({type: 'starting', mode: picked.mode, map: picked.map});
+                startMatch(picked);
+                return;
             }
             pendingEvents.push({type: 'console'});
         } else if (m.t === 'lobby' && isHost && scene === 'match') {

@@ -152,16 +152,6 @@ const Lobby = (() => {
             ctx.fillStyle = '#94a3b8';
             ctx.fillText(url.replace('http://', ''), qx + size / 2, qy + size + 28);
         }
-        // the countdown, once the host has pressed start
-        if (state.starting !== null && state.starting !== undefined) {
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-            rounded(ctx, sx, sy, sw, sh, 14);
-            ctx.fill();
-            ctx.textAlign = 'center';
-            ctx.fillStyle = '#22d3ee';
-            ctx.font = '800 96px system-ui, sans-serif';
-            ctx.fillText(String(Math.max(1, Math.ceil(state.starting))), x, sy + sh / 2 + 34);
-        }
         // the desk
         ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
         rounded(ctx, x - 90, y - 64, 180, 64, 8);

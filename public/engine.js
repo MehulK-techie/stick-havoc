@@ -18,7 +18,7 @@
     const particles = [], floaters = [], banners = [], ghosts = [];
     const heads = new Map(), shownHp = new Map(), flashes = new Map();
     const cam = {x: W / 2, y: H / 2, z: 1, shake: 0, kx: 0, ky: 0, flash: 0, slow: 0, slowX: 0, slowY: 0};
-    let lastPhase = null, lastCount = null, lastStart = null, snapCount = 0;
+    let lastPhase = null, snapCount = 0;
     const params = new URLSearchParams(location.search);
 
     // ------------------------------------------------------------ network
@@ -113,10 +113,6 @@
         scene = s.scene;
         if (s.scene === 'lobby') {
             Hud.syncSettings(s.sel, myId === hostId);
-            const n = s.starting === null ? null : Math.ceil(s.starting);
-            if (n !== lastStart && n !== null && n > 0)
-                Sfx.play('siren');
-            lastStart = n;
         } else {
             Lobby.state.near = null;
             if (Hud.isDrawerOpen())
@@ -131,24 +127,13 @@
     }
 
     function phases(s) {
-        const ph = s.scene === 'lobby' ? 'lobby' : s.ph;
-        if (ph !== lastPhase) {
-            if (ph === 'fight') {
-                banner('FIGHT', '#e5e7eb', 0.9, 110);
-                Sfx.play('fight');
-            }
-            lastPhase = ph;
-        }
-        if (ph === 'countdown') {
-            const n = 3 - Math.floor(s.pt);
-            if (n !== lastCount && n > 0) {
-                lastCount = n;
-                banner(String(n), '#22d3ee', 0.8, 130);
-                Sfx.play('count');
-            }
-        } else {
-            lastCount = null;
-        }
+        lastPhase = s.scene === 'lobby' ? 'lobby' : s.ph;   // (the countdown is the server's: see 'count')
+    }
+
+    // the countdown's banners cut in at once (no waiting behind another banner), so sight and sound agree
+    function cue(text, color, dur, size) {
+        banners.length = 0;
+        banner(text, color, dur, size);
     }
 
     function info(id) {
@@ -431,13 +416,22 @@
         case 'hazardEnd':
             Hud.toast(`${HAZARDS[ev.hazard]} is over`);
             break;
-        case 'starting':                          // (the server names the real mode and map, never Random or Shuffle)
-            if (MODES[ev.mode] && MAPS[ev.map])
-                Hud.toast(`${MODES[ev.mode]} on ${MAPS[ev.map].name}: get ready`);
-            break;
         case 'match':
             cam.z = 0.7; cam.y = H * 0.8;        // a sweep in to the new stage
-            banner(ev.name.toUpperCase(), '#e5e7eb', 1.8, 54);
+            Hud.toast(ev.name);
+            break;
+        case 'getReady':                          // the stage is up; the server's 3, 2, 1 follows
+            cue('GET READY', '#e5e7eb', 0.6, 64);
+            break;
+        case 'count':                             // one chime per server tick: 3, 2, 1, then FIGHT! and the gong
+            if (ev.n > 0) {
+                cue(String(ev.n), '#22d3ee', 0.9, 130);
+                Sfx.play('count' + ev.n);
+            } else {
+                cue('FIGHT!', '#e5e7eb', 0.9, 110);
+                Sfx.play('gong');
+                cam.shake = Math.max(cam.shake, 14);
+            }
             break;
         case 'roundEnd':                          // after the K.O. (banners take turns: no overlap)
             if (ev.champion) {

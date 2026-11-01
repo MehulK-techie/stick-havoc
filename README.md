@@ -70,10 +70,12 @@ has joined (their names over their heads). Three stations:
   weapons on or off, a player limit (2-15) and the map (or Random, or
   Banger Shuffle). Changes
   show on everyone's screen at once; anyone else at the console sees them
-  read-only ("Waiting for Host to start..."). `Enter` starts: 3, 2, 1, and
-  everyone is on the stage. Random and Banger Shuffle are settled by the
-  server when the countdown starts, and the countdown names the real mode
-  and map. (`Q` / `Tab` cycle mode and map without the
+  read-only ("Waiting for Host to start..."). `Enter` starts: everyone is on
+  the stage at once (`GET READY` for half a second while it loads), then one
+  countdown, run by the server: `3`, `2`, `1` (a rising chime each), `FIGHT!`
+  (a gong). Every browser plays them on the same server tick, and nobody can
+  move until `FIGHT!`. Every round starts the same way. Random and Banger
+  Shuffle are settled by the server the moment the host presses start. (`Q` / `Tab` cycle mode and map without the
   drawer.)
 - **1P Arcade** (the settings drawer's button, the host): a ladder of five computer opponents, one
   round each, on the four arenas in turn: Rookie Stick (slow, basic),

@@ -12,7 +12,8 @@ const Touch = (() => {
         ['W', 'JUMP', IN.JUMP, 58, 40, 158],
     ];
     // E and G sit well left of the thumb's arc (60+ px from J), so they're never hit by accident
-    const PILLS = [['E', null, 52, 252, 34], ['G', IN.GRAB, 52, 252, 80]];
+    const PILLS = [['E', null, 52, 252, 34], ['G', IN.GRAB, 52, 252, 80],
+        ['RAGE', IN.LIGHT | IN.HEAVY, 64, 246, 126]];   // (J + K at once: the Rage Art, under 25 %)
     let api = null, stickBits = 0;
 
     function buzz(ms = 15) {

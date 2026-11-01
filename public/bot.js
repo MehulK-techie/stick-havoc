@@ -43,7 +43,8 @@
             return (mem.k = (mem.k || 0) & ~TAPS);
         mem.t = S.react * (0.6 + Math.random() * 0.8);
         const r = () => Math.random();
-        const foes = w.fighters.filter(o => o.id !== f.id && o.st !== 'ko' && o.st !== 'gone' && !o.dummy);
+        const foes = w.fighters.filter(o => o.id !== f.id && o.st !== 'ko' && o.st !== 'gone' && !o.dummy &&
+            !(f.team && o.team === f.team));          // (Team Brawl: never the bot's own side)
         let k = 0;
         // a weapon on the floor nearby: go and get it
         const crate = S.weapons && !f.weapon && w.crates.find(c => c.landed && Math.abs(c.x - f.x) < 420 &&

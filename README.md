@@ -75,10 +75,12 @@ has joined (their names over their heads). Three stations:
   `👑 ROOM HOST` badge and a gold ring at their feet; the first to join, and
   if they leave the next one, with a notice to everyone) presses `E` here for
   the **match settings**: game mode (King of the Hill, Royal Rumble, Bomb Tag,
-  Floor Is Lava, Random, or **Banger Shuffle**: weighted picks that never
-  repeat the last mode, nor either of the last 2 maps), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
-  weapons on or off, a player limit (2-15) and the map (or Random, or
-  Banger Shuffle). Changes
+  Floor Is Lava, Team Brawl, Chrono Shift, Random, or **Banger Shuffle**: one
+  setting that deals a fresh mode and map together every round, weighted,
+  never the last round's mode or map again and never a pairing from the
+  last two rounds), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
+  weapons on or off, a player limit (2-15) and the map (or Random; under
+  Banger Shuffle the map row steps aside). Changes
   show on everyone's screen at once; anyone else at the console sees them
   read-only ("Waiting for Host to start..."). `Enter` starts: everyone is on
   the stage at once (`GET READY` for half a second while it loads), then one
@@ -215,6 +217,12 @@ nearest opponent close by, as in Tekken.
   Katana (5 fast, long slashes), Home-Run Bat (3 slow swings that send them
   across the arena), Laser Blaster (3 shots, with recoil), Bouncy Bomb
   (thrown: bounces twice, then blows everyone back).
+- **The Rage Art**: under 25 % health a fighter burns with red and gold
+  wisps (RAGE: everything they land hits 15 % harder). `J` + `K` together
+  (on a phone, the `RAGE` pill) unleashes it once a round: a flash, a surge
+  of about 140 px (untouchable through it), and if it connects the two of
+  them freeze while the camera closes in on three blows and an uppercut
+  (35 damage, flat) that sends them flying. Everyone else fights on.
 - **The climax clash**: both fighters under 25 % (or under 50 % when both
   are at match point), facing each other close up, attacking within 80 ms
   of each other: the game drops to 0.15x and the camera closes in. The
@@ -244,6 +252,8 @@ nearest opponent close by, as in Tekken.
 |---|---|
 | **King of the Hill** | Two fight, the rest queue (and vote on hazards, and send emojis). The loser goes to the back; the next comes in with a 2.5 s shield. First to 5 wins takes the match. Alone, you spar with a training bot. |
 | **Royal Rumble** | Everyone at once; last one standing wins the round. |
+| **Team Brawl** | Red against Blue: everyone is dealt onto a side (again when the line-up changes), with the team's colour on their glow, name and health bar. No friendly fire (punches, throws, shots and bombs pass through teammates). The last side standing takes the round, and every member scores. If the sides are uneven (3 v 2, 2 v 1), the smaller one gets **Overdrive**: a gold aura, 25 % less damage taken, 1.15x speed, and the Rage Art from the first second. |
+| **Chrono Shift** | Everyone at once, while the stage's clock shifts: normal (4 s), then the matrix (6 s at 0.45x, with floaty jumps), then hyper drive (6 s at 1.45x), and round again, each announced (`⚡ CHRONO SHIFT: HYPER DRIVE!`). |
 | **Floor Is Lava** | Everyone at once; every 30 s (3 s warning) every platform glows hot for 8 s: touch it and you're thrown up and burned. Stay up: double jumps, wall kicks, and landing a hit in the air gives your jump and air dash back. |
 | **Bomb Tag** | One player carries a ticking bomb (20 s). Punch someone to pass it on. At zero it explodes: the carrier is out and everyone near is blown away. A new bomb goes to a survivor, until one is left. No health in this mode, only the bomb and the pit. |
 

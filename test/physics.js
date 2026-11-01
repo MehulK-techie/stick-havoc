@@ -477,5 +477,43 @@ function run(w, frames, inputs) {
     check(`off the magma: back on a platform every time, burned once (${back}/20, ${(burns / 20).toFixed(2)} burns)`,
         back === 20 && burns / 20 <= 1.1);
 }
+{   // the Rage Art: under 25 %, J + K: a surge, one 35-damage barrage that freezes the two of them, once a round
+    const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 830); a.face = 1; a.hp = 20;
+    const ev = run(w, 14, i => ({1: {k: i === 0 ? P.IN.LIGHT | P.IN.HEAVY : 0}}));
+    check('J + K under 25 %: the Rage Art surges in and lands 35', ev.some(e => e.type === 'rageStart') &&
+        ev.some(e => e.type === 'rageArt') && b.hp === 65 && a.rageUsed && a.x > 760);
+    check('the two of them hold still for the barrage', a.freeze > 0 && b.freeze > 0);
+    run(w, 30, {});
+    check('then the victim flies', b.st === 'tumble' || Math.abs(b.x - 830) > 60);
+    const w2 = world('colosseum'); const c = fighter(w2, 1, 700), d = fighter(w2, 2, 760); c.face = 1;
+    const ev2 = run(w2, 3, i => ({1: {k: i === 0 ? P.IN.LIGHT | P.IN.HEAVY : 0}}));
+    check('at full health, J + K is just a punch', !ev2.some(e => e.type === 'rageStart') && !c.rageUsed);
+    c.hp = 20; c.rageUsed = true; c.atk = null;
+    const ev3 = run(w2, 3, i => ({1: {k: i === 0 ? P.IN.LIGHT | P.IN.HEAVY : 0}}));
+    check('once a round', !ev3.some(e => e.type === 'rageStart'));
+}
+{   // Overdrive (the smaller team): a quarter off every blow, and the Rage Art from the start
+    const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 750); a.face = 1;
+    b.overdrive = true;
+    run(w, 6, i => ({1: {k: i === 0 ? P.IN.HEAVY : 0}}));
+    check('Overdrive takes 25 % less', b.hp === 100 - Math.round(P.MOVES.uppercut.dmg * 0.75));
+    check('and has the Rage Art at full health', P.raging(w, Object.assign({}, b, {hp: 100})));
+}
+{   // Team Brawl: no friendly fire
+    const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 750); a.face = 1;
+    a.team = b.team = 'red';
+    const ev = run(w, 6, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    check("a teammate's punch passes through", !ev.some(e => e.type === 'hit') && b.hp === 100);
+}
+{   // Chrono Shift: normal (4 s), matrix 0.45x (6 s), hyper 1.45x (6 s), and round again
+    const w = world('colosseum'); w.chrono = {phase: 'normal', t: 4};
+    const phases = [];
+    for (let i = 0; i < 30 * 17; i++)
+        phases.push(...run(w, 1, {}).filter(e => e.type === 'chrono').map(e => `${e.phase}@${Math.round(i / 30)}`));
+    check(`Chrono Shift cycles ${phases.join(' ')}`, phases.join() === 'matrix@4,hyper@10,normal@16');
+    const w2 = world('colosseum'); w2.chrono = {phase: 'matrix', t: 6}; const t0 = w2.time;
+    run(w2, 30, {});
+    check('the matrix phase runs the clock at 0.45x', Math.abs(w2.time - t0 - 0.45) < 0.01);
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

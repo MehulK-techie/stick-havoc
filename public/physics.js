@@ -32,7 +32,11 @@
     };
     const HAZARDS = {ice: 'Slippery Ice', anvil: 'Anvil Rain', lowgrav: 'Low Gravity', gloves: 'Giant Boxing Gloves'};
     const VOTE_PAIRS = [['ice', 'anvil'], ['lowgrav', 'gloves'], ['ice', 'gloves'], ['anvil', 'lowgrav']];
-    const MODES = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', lava: 'Floor Is Lava'};
+    const MODES = {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', lava: 'Floor Is Lava',
+        team: 'Team Brawl', chrono: 'Chrono Shift'};
+    // Chrono Shift's clock: each phase's speed and length, and what comes next
+    const CHRONO = {normal: {speed: 1, secs: 4, next: 'matrix'}, matrix: {speed: 0.45, secs: 6, next: 'hyper', gravity: 0.7},
+        hyper: {speed: 1.45, secs: 6, next: 'normal'}};
     const IN = {LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, LIGHT: 32, HEAVY: 64, DASH: 128, USE: 256, GRAB: 512};
     const PROJECTILES = ['laser', 'grenade', 'thrown'];
 
@@ -153,6 +157,7 @@
         sweep: {dur: fr(22), from: fr(6), to: fr(11), reach: 52, r: 34, dmg: 7},      // down + J, low
         pound: {dur: fr(60), from: fr(2), to: fr(58), reach: 0, r: 36, dmg: 9},       // down + K in the air
         ledgekick: {dur: fr(13), from: fr(3), to: fr(11), reach: 0, r: 46, dmg: 16},  // J while hanging
+        rage: {dur: fr(36), from: fr(7), to: fr(22), reach: 40, r: 46, dmg: 35},      // J + K under 25 %: the Rage Art
     };
     const STRING = ['jab', 'hook', 'straight'];
 
@@ -162,6 +167,11 @@
         if (inp & IN.UP)
             return {x: f.face * 0.5, y: -0.866};
         return {x: f.face, y: 0};
+    }
+
+    // the Rage Art is ready: under 25 % (or Overdrive, from the start), once a round
+    function raging(w, f) {
+        return !f.rageUsed && f.hp > 0 && !w.noDamage && !f.dummy && (f.hp <= C.HP * 0.25 || !!f.overdrive);
     }
 
     function hurt(f) {
@@ -262,6 +272,9 @@
         case 'ledgekick':                              // up over the lip, boot first
             kx = a.face * 600; ky = -420; stun = 0.5; tumble = true;
             break;
+        case 'rage':                                   // the barrage's last blow: an uppercut that sends them flying
+            kx = a.face * 900; ky = -760; stun = 0.9; tumble = true;
+            break;
         case 'dive':
             if (airborne) {                            // a spike, straight down
                 kx = a.face * 200; ky = 1150; tumble = true;
@@ -297,6 +310,14 @@
         } else if (kind === 'straight') {
             callout(w, t, 'CLEAN HIT!');               // the string's finisher, landed
         }
+        if (kind === 'rage') {                         // the Rage Art: 35, flat
+            dmg = MOVES.rage.dmg;
+            callout(w, a, 'RAGE ART!');
+        } else if (a.id !== undefined && raging(w, a)) {
+            dmg = Math.round(dmg * 1.15);              // rage: everything hits 15 % harder
+        }
+        if (t.overdrive)                               // the underdogs' Overdrive: a quarter off every blow
+            dmg = Math.round(dmg * 0.75);
         // the combo: more hits while they're still reeling from the last
         const chained = t.comboBy === a.id && w.time - (t.comboAt || -9) < 0.5;
         t.comboAt = w.time;
@@ -321,7 +342,13 @@
         else
             t.spin = 0;
         const heavy = !['jab', 'hook', 'katana', 'laser'].includes(kind);
-        hitStop(w, [a, t], heavy ? 0.06 : 0.03);
+        if (kind === 'rage') {                         // the two of them hold still for the barrage; the stage goes on
+            a.freeze = t.freeze = 0.5;
+            w.events.push({type: 'rageArt', x: Math.round((a.x + t.x) / 2), y: Math.round(t.y - 60), by: a.id, on: t.id,
+                color: a.color});
+        } else {
+            hitStop(w, [a, t], heavy ? 0.06 : 0.03);
+        }
         const hx = (a.x + t.x) / 2, hy = t.y - 60;
         const len = Math.hypot(kx, ky) || 1;
         const shown = w.noDamage && !t.dummy ? 0 : dmg;
@@ -443,7 +470,15 @@
         }
         if (Math.abs(1 - w.timeScale) < 0.01)
             w.timeScale = 1;
-        const dt = dtReal * w.timeScale;
+        if (w.chrono) {                                // Chrono Shift: normal, matrix (0.45x), hyper (1.45x), round again
+            w.chrono.t -= dtReal;
+            if (w.chrono.t <= 0) {
+                const next = CHRONO[w.chrono.phase].next;
+                w.chrono = {phase: next, t: CHRONO[next].secs};
+                w.events.push({type: 'chrono', phase: next});
+            }
+        }
+        const dt = dtReal * w.timeScale * (w.chrono ? CHRONO[w.chrono.phase].speed : 1);
         w.time += dt;
         w.slowmoCd = Math.max(0, w.slowmoCd - dtReal);
         if (w.hazard) {
@@ -549,7 +584,7 @@
             // the sky train's slipstream: in the air you drift backwards
             const wind = !f.ground && MAPS[w.map] && MAPS[w.map].wind ? MAPS[w.map].wind : 0;
             const di = !f.ground && f.diT > 0;      // (off the lava: steer hard)
-            const target = dir * C.RUN * busy * (di ? 1.5 : 1) - wind;
+            const target = dir * C.RUN * busy * (di ? 1.5 : 1) * (f.overdrive ? 1.15 : 1) - wind;
             const acc = f.ground ? (w.hazard === 'ice' ? C.ACC_ICE : C.ACC_GROUND) : C.ACC_AIR * (di ? 1.8 : 1);
             f.vx += Math.max(-acc * dt, Math.min(acc * dt, target - f.vx));
             if (dir && !f.atk)
@@ -594,6 +629,20 @@
             f.atk = {kind: 'grab', move: MOVES.grab, t: 0, hit: [], dir: {x: f.face, y: 0}};
             f.atkAt = w.time;
             w.events.push({type: 'swing', id: f.id, kind: 'grab'});
+            return;
+        }
+        // J + K together while raging: the Rage Art (it cancels a punch still winding up)
+        if ((pressed & (IN.LIGHT | IN.HEAVY)) && (k & IN.LIGHT) && (k & IN.HEAVY) && raging(w, f) && f.dashT <= 0 &&
+            (!f.atk || (STRING.includes(f.atk.kind) && f.atk.t < f.atk.move.from))) {
+            const foe = w.fighters.filter(o => o !== f && !o.dummy && o.st !== 'ko' && o.st !== 'gone' && (!f.team || o.team !== f.team))
+                .sort((p, q) => Math.abs(p.x - f.x) - Math.abs(q.x - f.x))[0];
+            if (foe && Math.abs(foe.x - f.x) < 400)
+                f.face = foe.x > f.x ? 1 : -1;
+            f.rageUsed = true;
+            f.atk = {kind: 'rage', move: MOVES.rage, t: 0, hit: [], dir: {x: f.face, y: 0}};
+            f.atkAt = w.time;
+            f.inv = Math.max(f.inv, MOVES.rage.from + fr(10));   // (untouchable through the startup and the surge)
+            w.events.push({type: 'rageStart', id: f.id, x: Math.round(f.x), y: Math.round(f.y - 60), color: f.color});
             return;
         }
         if (f.atk || f.dashT > 0 || !(pressed & (IN.LIGHT | IN.HEAVY)))
@@ -712,6 +761,8 @@
             cx = f.x; cy = f.y - 6;
         } else if (a.kind === 'ledgekick') {         // the boot, coming up over the lip
             cx = f.x + f.face * 30; cy = f.y - 70;
+        } else if (a.kind === 'rage') {              // the surge's leading fist
+            cx = f.x + f.face * m.reach; cy = f.y - 58;
         } else if (a.kind === 'uppercut') {          // low and forward: it catches a standing opponent
             cx = f.x + f.face * 34; cy = f.y - 52;
         } else if (Weapons.KINDS[a.kind]) {
@@ -740,8 +791,13 @@
             return;
         a.t += dt;
         const m = a.move;
+        if (a.kind === 'rage' && a.t >= m.from && !a.surged) {   // the startup's done: surge forward ~140 px
+            a.surged = true;
+            f.dashT = fr(9);
+        }
         if (a.kind === 'grab' && a.t >= m.from && a.t <= m.to && !a.hit.length) {
             const t = live.find(o => o !== f && o.st !== 'ko' && o.ground && o.inv <= 0 && o.shield <= 0 && !o.ghost &&
+                !(f.team && o.team === f.team) &&
                 Math.abs(o.x - f.x) < 62 && Math.abs(o.y - f.y) < 40 && (o.x - f.x) * f.face > -10);
             if (t) {
                 a.hit.push(t.id);
@@ -756,7 +812,8 @@
             }
             const pair = w.clash && [w.clash.a, w.clash.b];
             for (const t of live) {
-                if (t === f || a.hit.includes(t.id) || t.st === 'ko' || t.inv > 0 || t.shield > 0 || t.ghost)
+                if (t === f || a.hit.includes(t.id) || t.st === 'ko' || t.inv > 0 || t.shield > 0 || t.ghost ||
+                    (f.team && t.team === f.team))      // (Team Brawl: no friendly fire)
                     continue;
                 if (pair && pair.includes(f.id) && pair.includes(t.id)) {   // both connecting now? the first one in
                     const theirs = hitCircle(w, t);
@@ -871,7 +928,8 @@
                 return;
             f.rest = false;                            // (unless the floor under it gives way)
         }
-        const grav = C.GRAV * w.gravity * (w.hazard === 'lowgrav' ? 0.45 : 1);
+        const grav = C.GRAV * w.gravity * (w.hazard === 'lowgrav' ? 0.45 : 1) *
+            (w.chrono && CHRONO[w.chrono.phase].gravity || 1);   // (the matrix phase: floaty jumps)
         if (f.dashT > 0 && !f.ground)
             f.vy = 0;
         else if (f.atk && f.atk.kind === 'dive')
@@ -1338,6 +1396,7 @@
             const owner = w.fighters.find(f => f.id === s.owner);
             // whoever it touches (not its thrower)
             const hit = live.find(f => f.id !== s.owner && f.st !== 'ko' && f.inv <= 0 && f.shield <= 0 && !f.ghost &&
+                !(owner && owner.team && f.team === owner.team) &&
                 circleHits(s.x, s.y, s.kind === 'grenade' ? 12 : 16, hurt(f)));
             if (s.kind === 'grenade') {
                 if (s.x < 20 || s.x > W - 20)
@@ -1372,7 +1431,8 @@
         for (const f of w.fighters) {
             if (f.st === 'ko' || f.st === 'gone' || f.inv > 0 || f.shield > 0 || f.dummy)
                 continue;
-            if (Math.hypot(f.x - s.x, f.y - 50 - s.y) < S.radius && !w.noDamage) {
+            if (Math.hypot(f.x - s.x, f.y - 50 - s.y) < S.radius && !w.noDamage &&
+                !(owner && owner.team && f !== owner && f.team === owner.team)) {
                 f.hp = Math.max(0, f.hp - S.dmg);
                 f.lastHit = s.owner;
                 if (f.hp <= 0)
@@ -1572,7 +1632,7 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         if (!opts.noGlow) {
-            ctx.shadowColor = f.color;
+            ctx.shadowColor = opts.glow || f.color;    // (a team's colour, or rage red)
             ctx.shadowBlur = 10;
         }
         const pt = (o, ang, len) => ({x: o.x + Math.sin(ang) * len, y: o.y + Math.cos(ang) * len});
@@ -1703,5 +1763,5 @@
     }
 
     return {W, H, C, COLORS, HATS, TRAILS, HAZARDS, VOTE_PAIRS, MODES, MAPS, ARENAS, IN, MOVES, stage, createWorld,
-        makeFighter, makeDummy, explode, knockOut, step, drawRig, mantlePath, HANG, GRIP};
+        makeFighter, makeDummy, explode, knockOut, step, drawRig, mantlePath, HANG, GRIP, CHRONO, raging};
 });

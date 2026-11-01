@@ -138,7 +138,8 @@ const Lobby = (() => {
         const rows = [
             ['MODE', pickName(sel.mode, MODES), '#22d3ee'],
             ['MATCH', `First to ${sel.target}  ·  ${sel.timer ? sel.timer + ' s rounds' : 'no timer'}`],
-            ['MAP', pickName(sel.map, Object.fromEntries(Object.entries(MAPS).map(([k, m]) => [k, m.name])))],
+            ['MAP', sel.mode === 'shuffle' ? 'A new one each round' :
+                pickName(sel.map, Object.fromEntries(Object.entries(MAPS).map(([k, m]) => [k, m.name])))],
             ['WEAPONS', sel.weapons ? 'On' : 'Off'],
             ['PLAYERS READY', `${state.ready || 0} / ${sel.limit || state.max || 10}`],
         ];

@@ -132,6 +132,7 @@ const Sfx = (() => {
         claim: () => { for (const [f, d] of [[880, 0], [1175, 0.07], [1568, 0.14]]) tone('triangle', f, f, 0.18, 0.16, d); },
         kick: () => { tone('sine', 260, 120, 0.1, 0.4); },
         sizzle: () => { noise(0.5, 'highpass', 3000, 1500, 0.35); tone('sawtooth', 120, 60, 0.3, 0.12); },
+        rage: () => { for (const [f, d] of [[392, 0], [587, 0.06], [880, 0.12]]) tone('sawtooth', f, f * 1.02, 0.25, 0.14, d); },
         chime: () => { for (const [f, d] of [[784, 0], [988, 0.08], [1175, 0.16], [1568, 0.24]]) tone('sine', f, f, 0.35, 0.16, d); },
         stinger: () => {                       // the climax blow: a deep hit under a bright, short ring
             tone('sine', 90, 30, 0.9, 1.0); noise(0.3, 'lowpass', 900, 80, 0.5);

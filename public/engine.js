@@ -449,8 +449,39 @@
             break;
         case 'match':
             cam.z = 0.7; cam.y = H * 0.8;        // a sweep in to the new stage
-            Hud.toast(ev.name);
+            Hud.toast(ev.shuffle ? `Banger Shuffle: ${MODES[ev.mode]} on ${ev.name}` : ev.name);
             break;
+        case 'rageStart':                         // the Rage Art's startup: a flash and a rising chime
+            cam.flash = 0.6;
+            ring(ev.x, ev.y, '#f43f5e');
+            Sfx.play('rage');
+            break;
+        case 'rageArt': {                         // it connects: close in on them, three blows and the uppercut
+            cam.slow = 0.6; cam.slowX = ev.x; cam.slowY = ev.y;
+            for (let i = 0; i < 4; i++)
+                setTimeout(() => {
+                    const last = i === 3;
+                    burst(ev.x + (Math.random() - 0.5) * 30, ev.y + (Math.random() - 0.5) * 30, last ? '#facc15' : '#f43f5e',
+                        last ? 60 : 18, last ? 1300 : 700);
+                    if (last) {
+                        starburst(ev.x, ev.y, '#facc15');
+                        cam.shake = 30;
+                    }
+                    Sfx.play(last ? 'stinger' : 'heavy');
+                }, 90 + i * 110);
+            break;
+        }
+        case 'overdrive':
+            cue('OVERDRIVE ACTIVE', '#facc15', 1.4, 56);
+            Hud.toast(`Team ${ev.team[0].toUpperCase() + ev.team.slice(1)} is short-handed: Overdrive (25 % tougher, faster, Rage Art ready)`, 4500);
+            break;
+        case 'chrono': {
+            const named = {matrix: 'MATRIX (0.45x)', hyper: 'HYPER DRIVE!', normal: 'NORMAL SPEED'};
+            cue(`⚡ CHRONO SHIFT: ${named[ev.phase]}`, ev.phase === 'hyper' ? '#facc15' : ev.phase === 'matrix' ? '#22d3ee' : '#e5e7eb',
+                1.3, 44);
+            Sfx.play(ev.phase === 'hyper' ? 'warp' : 'slowmo');
+            break;
+        }
         case 'restart':
             Hud.toast('Round restarted');
             break;
@@ -470,6 +501,8 @@
         case 'roundEnd':                          // after the K.O. (banners take turns: no overlap)
             if (ev.champion) {
                 setTimeout(() => showPodium(ev.champion, ev.stats), 2300);
+            } else if (ev.team) {
+                banner(`ROUND ${ev.round || ''} · TEAM ${ev.team.toUpperCase()}`, TEAM_COLORS[ev.team], 1.6, 52);
             } else {
                 banner(ev.winner ? `ROUND ${ev.round || ''} · ${nameOf(ev.winner).toUpperCase()}` : 'DRAW',
                     ev.winner ? colorOf(ev.winner) : '#e5e7eb', 1.6, 52);
@@ -648,6 +681,7 @@
                 spin: fa[13] + (fb[13] - fa[13]) * k, ground: fb[14], aimY: fb[15], dummy: fb[0] === 0,
                 name: p.name, color: p.color, gear: p.gear || {}, weapon: fb[16] || null, uses: fb[17], ghost: fb[18],
                 climb: fb[19] >= 0 ? fa[19] + (fb[19] - fa[19]) * k : -1,
+                team: fb[20] || null, rage: !!(fb[21] & 1), overdrive: !!(fb[21] & 2),
                 bomb: !!(b.s.bomb && b.s.bomb.id === fb[0]), bombT: b.s.bomb ? b.s.bomb.t : 0});
         }
         return {s: b.s, f: out, an: b.s.an, cr: b.s.cr || [], sh: b.s.sh || []};
@@ -998,7 +1032,22 @@
             ctx.beginPath(); ctx.ellipse(f.x, f.y + 2, 30 + Math.sin(clock * 3) * 2, 7, 0, 0, Math.PI * 2); ctx.stroke();
             ctx.restore();
         }
-        const head = drawRig(ctx, f, clock, {gloves: s.hz === 'gloves', flash, eyes: gear.eyes, alpha: f.ghost ? 0.45 : 1});
+        if (f.overdrive && f.st !== 'ko') {             // Overdrive: a gold aura
+            ctx.save();
+            ctx.globalAlpha = 0.28 + 0.12 * Math.sin(clock * 6);
+            const g = ctx.createRadialGradient(f.x, f.y - 50, 8, f.x, f.y - 50, 70);
+            g.addColorStop(0, '#facc15');
+            g.addColorStop(1, 'rgba(250, 204, 21, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(f.x, f.y - 50, 70, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+        if (f.rage && f.st !== 'ko' && Math.random() < 0.7)   // RAGE: red and gold wisps rising off them
+            particles.push({k: 'dust', x: f.x + (Math.random() - 0.5) * 34, y: f.y - Math.random() * 90,
+                vx: (Math.random() - 0.5) * 30, vy: -160 - Math.random() * 80, life: 0, max: 0.55,
+                color: Math.random() < 0.6 ? '#f43f5e' : '#facc15', size: 3 + Math.random() * 3});
+        const head = drawRig(ctx, f, clock, {gloves: s.hz === 'gloves', flash, eyes: gear.eyes, alpha: f.ghost ? 0.45 : 1,
+            glow: f.team ? TEAM_COLORS[f.team] : f.rage ? '#f43f5e' : null});
         if (gear.hat === 'bandana')
             drawRibbons(f, head);
         if (f.st === 'ko' || f.dummy)
@@ -1007,7 +1056,7 @@
         ctx.save();
         ctx.font = '600 14px system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillStyle = f.id === myId ? '#f1f5f9' : 'rgba(226, 232, 240, 0.7)';
+        ctx.fillStyle = f.team ? TEAM_COLORS[f.team] : f.id === myId ? '#f1f5f9' : 'rgba(226, 232, 240, 0.7)';
         const ty = f.y - (gear.hat === 'kasa' || gear.hat === 'crown' ? 140 : 128) - (f.bomb ? 30 : 0);
         ctx.fillText(f.name, f.x, ty);
         if (isHost) {                                     // 👑 ROOM HOST, lit, over the name
@@ -1208,11 +1257,21 @@
             ctx.textAlign = 'center';
             ctx.fillStyle = '#94a3b8';
             ctx.fillText('VS', cw / 2, 28);
-        } else if (s.mode === 'rumble') {
+        } else if (s.mode === 'team') {                      // RED 2 · BLUE 1: who's still standing on each side
+            const up = side => v.f.filter(f => f.team === side && f.st !== 'ko').length;
+            ctx.font = font(800, 15);
+            ctx.textAlign = 'right';
+            ctx.fillStyle = TEAM_COLORS.red;
+            ctx.fillText(`RED ${up('red')}`, cw / 2 - 12, 30);
+            ctx.textAlign = 'left';
+            ctx.fillStyle = TEAM_COLORS.blue;
+            ctx.fillText(`${up('blue')} BLUE`, cw / 2 + 12, 30);
+        } else if (s.mode === 'rumble' || s.mode === 'chrono' || s.mode === 'lava') {
             ctx.font = font(700, 14);
             ctx.textAlign = 'center';
             ctx.fillStyle = '#e5e7eb';
-            ctx.fillText(`${v.f.filter(f => f.st !== 'ko').length} LEFT`, cw / 2, 30);
+            const phase = {matrix: '  ·  MATRIX 0.45x', hyper: '  ·  HYPER 1.45x', normal: '  ·  NORMAL'}[s.chrono] || '';
+            ctx.fillText(`${v.f.filter(f => f.st !== 'ko' && !f.dummy).length} LEFT${phase}`, cw / 2, 30);
         } else if (s.mode === 'bomb' && s.bomb) {
             ctx.font = font(700, 15);
             ctx.textAlign = 'center';

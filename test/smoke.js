@@ -168,7 +168,7 @@ async function brawl(fighters, ms) {
     check('the host at the console', a.near === 'console' && a.roster.host === a.id);
     a.send({t: 'console', do: 'mode'}); await sleep(150);
     check('Q cycles the mode', last.sel.mode === 'rumble');
-    for (let i = 0; i < 5; i++) a.send({t: 'console', do: 'mode'});   // round the six modes, back to King of the Hill
+    for (let i = 0; i < 7; i++) a.send({t: 'console', do: 'mode'});   // round the eight modes, back to King of the Hill
     a.send({t: 'console', do: 'map'}); await sleep(150);
     check('Tab cycles the map', last.sel.mode === 'koth' && last.sel.map === 'reactor');
     // the match settings: the host sets them, everyone sees them, nobody else can
@@ -216,7 +216,7 @@ async function brawl(fighters, ms) {
     // ---------------- Banger Shuffle: never the same mode or map twice running
     a.send({t: 'lobby'});
     await until(() => last.scene === 'lobby', 2000);
-    a.send({t: 'settings', key: 'mode', value: 'shuffle'}); a.send({t: 'settings', key: 'map', value: 'shuffle'});
+    a.send({t: 'settings', key: 'mode', value: 'shuffle'});
     a.send({t: 'settings', key: 'limit', value: 15}); await sleep(150);
     check('15 players allowed', last.sel.limit === 15);
     const picks = [];
@@ -243,6 +243,18 @@ async function brawl(fighters, ms) {
     seen = new Set();
     check('Bomb Tag: someone has the bomb', await until(() => last.bomb !== null, 3000));
     check('it goes off', await until(() => seen.has('boom'), 6000));
+    // ---------------- Team Brawl: three players, two teams; the smaller one gets Overdrive
+    a.send({t: 'lobby'});
+    await until(() => last.scene === 'lobby', 2000);
+    a.send({t: 'settings', key: 'mode', value: 'team'});
+    await sleep(150);
+    evs = [];
+    a.send({t: 'console', do: 'start'});
+    await until(() => last.scene === 'match' && last.ph === 'fight', 6000);
+    const teams = last.f.filter(f => f[0] !== 0).map(f => f[20]);
+    const od = last.f.filter(f => f[21] & 2).map(f => f[20]);
+    check('Team Brawl: 2 red, 1 blue', teams.filter(t => t === 'red').length === 2 && teams.filter(t => t === 'blue').length === 1);
+    check('the lone blue is in Overdrive', evs.some(x => x.type === 'overdrive' && x.team === 'blue') && od.join() === 'blue');
     // ---------------- the 1P arcade ladder
     a.send({t: 'lobby'});
     await until(() => last.scene === 'lobby', 2000);
@@ -284,7 +296,7 @@ async function brawl(fighters, ms) {
     check('and the room keeps running', srv.exitCode === null && last.scene === 'lobby');
     e.ws.close();
     // ---------------- Banger Shuffle: settled on the server before anyone is told
-    b.send({t: 'settings', key: 'mode', value: 'shuffle'}); b.send({t: 'settings', key: 'map', value: 'shuffle'});
+    b.send({t: 'settings', key: 'mode', value: 'shuffle'});
     await sleep(200);
     evs = [];
     b.send({t: 'console', do: 'start'});
@@ -296,7 +308,7 @@ async function brawl(fighters, ms) {
     b.send({t: 'lobby'});
     await until(() => last.scene === 'lobby', 3000);
     // ---------------- the 1P sandbox: only for someone alone in the room
-    const solo = {t: 'sandbox', mode: 'rumble', level: 'hard', crates: 'frequent', map: 'shuffle', target: 3, bots: 3};
+    const solo = {t: 'sandbox', mode: 'rumble', level: 'hard', crates: 'frequent', map: 'random', target: 3, bots: 3};
     b.send(solo);
     await sleep(400);
     check('the sandbox is refused with two in the room', last.scene === 'lobby');

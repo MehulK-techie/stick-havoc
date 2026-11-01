@@ -77,12 +77,13 @@ let nextId = 1;
 const players = new Map();      // id -> {id, ws, name, color, gear, wins, joined, input, bot}
 // the room's settings: the host changes them at the console
 const sel = {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: MAX_PLAYERS};
-const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'lava', 'random', 'shuffle'], map: [...P.ARENAS, 'random', 'shuffle'],
+const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'lava', 'team', 'chrono', 'random', 'shuffle'], map: [...P.ARENAS, 'random'],
     target: [3, 5, 7], timer: [45, 60, 90, 0], weapons: [true, false],
     limit: Array.from({length: MAX_PLAYERS - 1}, (_, i) => i + 2)};
-// Banger Shuffle: weighted picks; never the last mode again, never one of the last 2 maps
-const SHUFFLE_WEIGHTS = {koth: 3, rumble: 3, bomb: 2, lava: 2};
-const history = [];                   // the last 2 matches, [{mode, map}], newest last
+// Banger Shuffle: one setting that deals a fresh mode and map together every round, weighted, never the last
+// round's mode or map again and never a pairing from the last 2 rounds
+const SHUFFLE_WEIGHTS = {koth: 3, rumble: 3, bomb: 2, lava: 2, team: 2, chrono: 2};
+const history = [];                   // the last 2 rounds' pairings, [{mode, map}], newest last
 // the 1P sandbox: any map, a mode against 1-3 bots, how hard they are, how often crates fall
 const SANDBOX = {
     mode: {duel: 'koth', rumble: 'rumble', bomb: 'bomb', lava: 'lava'},
@@ -186,20 +187,33 @@ function weighted(weights) {
 
 // the settings as a real mode and map: Random and Banger Shuffle are picked here, on the server, before anyone
 // is told, so no client is ever handed 'shuffle' to look up
-function resolvePick(want = sel) {
+function bangerShuffle() {
     const last = history[history.length - 1] || {};
-    const recentMaps = history.map(h => h.map);
     const modes = Object.fromEntries(Object.entries(SHUFFLE_WEIGHTS).filter(([k]) => k !== last.mode));
-    const mode = want.mode === 'random' ? pick(Object.keys(P.MODES)) : want.mode === 'shuffle' ? weighted(modes) : want.mode;
-    const fresh = P.ARENAS.filter(m => !recentMaps.includes(m));
-    const map = want.map === 'random' ? pick(P.ARENAS) : want.map === 'shuffle' ? pick(fresh.length ? fresh : P.ARENAS) : want.map;
+    for (let tries = 0; tries < 50; tries++) {
+        const mode = weighted(modes), map = pick(P.ARENAS.filter(m => m !== last.map));
+        if (!history.some(h => h.mode === mode && h.map === map))
+            return {mode, map};
+    }
+    return {mode: weighted(modes), map: pick(P.ARENAS.filter(m => m !== last.map))};
+}
+
+function remember(mode, map) {
+    history.push({mode, map});
+    if (history.length > 2)
+        history.shift();
+}
+
+function resolvePick(want = sel) {
+    if (want.mode === 'shuffle')
+        return bangerShuffle();
+    const mode = want.mode === 'random' ? pick(Object.keys(P.MODES)) : want.mode;
+    const map = want.map === 'random' || want.map === 'shuffle' ? pick(P.ARENAS) : want.map;
     return {mode: P.MODES[mode] ? mode : 'koth', map: P.MAPS[map] && map !== 'lobby' ? map : P.ARENAS[0]};
 }
 
 function newMatch(mode, map, extra) {
-    history.push({mode, map});
-    if (history.length > 2)
-        history.shift();
+    remember(mode, map);
     return Object.assign({mode, map, world: null, phase: 'countdown', phaseT: 0, queue: [], active: [], target: sel.target,
         timeLimit: sel.timer, clock: 0, weapons: sel.weapons,
         roundWins: new Map(), bomb: null, voteClock: 0, vote: null, round: 0, winner: null, champion: null,
@@ -209,7 +223,7 @@ function newMatch(mode, map, extra) {
 function startMatch(picked) {
     const ids = humans().map(p => p.id);
     const {mode, map} = picked || resolvePick();
-    match = newMatch(mode, map);
+    match = newMatch(mode, map, {shuffle: sel.mode === 'shuffle'});
     if (match.mode === 'koth')
         match.queue = ids.slice();
     scene = 'match';
@@ -224,10 +238,11 @@ function startSandbox(playerId, o) {
     const styles = SANDBOX.level[o.level].slice(0, o.mode === 'duel' ? 1 : o.bots);
     match = newMatch(SANDBOX.mode[o.mode], map, {target: o.target, weapons: SANDBOX.crates[o.crates] > 0,
         sandbox: {player: playerId, crates: SANDBOX.crates[o.crates]}});
-    // (two of the same style get a number: Demon, Demon 2)
+    // the host's own names for them (kept in their browser), else the style's (two of a kind: Demon, Demon 2)
+    const names = Array.isArray(o.names) ? o.names.slice(0, 3).map(clean) : [];
     const bots = styles.map((style, i) => {
         const n = styles.slice(0, i).filter(s => s === style).length;
-        return addBot(style, n ? `${Bot.STYLES[style].name} ${n + 1}` : null);
+        return addBot(style, names[i] || (n ? `${Bot.STYLES[style].name} ${n + 1}` : null));
     });
     if (match.mode === 'koth')
         match.queue = [playerId, ...bots];
@@ -238,6 +253,20 @@ function startSandbox(playerId, o) {
 
 function startRound() {
     const m = match;
+    if (m.reshuffle) {                       // Banger Shuffle: a fresh mode and map for every round
+        m.reshuffle = false;
+        const was = m.mode, next = bangerShuffle();
+        remember(next.mode, next.map);
+        m.mode = next.mode;
+        m.map = next.map;
+        m.world = null;
+        m.bomb = null;
+        if (next.mode === 'koth' && was !== 'koth') {      // (into the queue: everyone in line, two in the ring)
+            m.active = [];
+            m.queue = [...players.keys()];
+        }
+        pendingEvents.push({type: 'match', mode: m.mode, map: m.map, name: P.MAPS[m.map].name, shuffle: true});
+    }
     const keep = m.world && m.world.hazard ? {hazard: m.world.hazard, hazardT: m.world.hazardT} : {};
     m.world = Object.assign(P.createWorld(m.map), keep);
     m.world.noDamage = m.mode === 'bomb';
@@ -269,6 +298,9 @@ function startRound() {
     });
     if (m.mode === 'bomb')
         m.bomb = null;
+    if (m.mode === 'team')
+        dealTeams(m);
+    m.world.chrono = m.mode === 'chrono' ? {phase: 'normal', t: P.CHRONO.normal.secs} : null;
     // match point for both of the two in the ring: the climax clash comes in at half health
     // who would clinch the match by winning this round: only their final blow gets the K.O. cinematic
     // (the arcade's rounds each decide a stage: every one does)
@@ -279,6 +311,25 @@ function startRound() {
     if (m.phase === 'countdown')
         pendingEvents.push({type: 'getReady', round: m.round});
     roster();
+}
+
+// Team Brawl: red and blue, dealt out alternately (dealt again when the line-up changes); the smaller side
+// gets Overdrive: a quarter off every blow, 1.15x speed, the Rage Art from the start
+function dealTeams(m) {
+    if (!m.teams || m.active.some(id => !m.teams.has(id))) {
+        const order = [...m.active].sort((a, b) => !!players.get(a).bot - !!players.get(b).bot ||
+            players.get(a).joined - players.get(b).joined);
+        m.teams = new Map(order.map((id, i) => [id, i % 2 ? 'blue' : 'red']));
+    }
+    const count = side => m.active.filter(id => m.teams.get(id) === side).length;
+    const red = count('red'), blue = count('blue');
+    const under = red < blue ? 'red' : blue < red ? 'blue' : null;
+    for (const f of m.world.fighters) {
+        f.team = m.teams.get(f.id);
+        f.overdrive = !!under && f.team === under;
+    }
+    if (under)
+        pendingEvents.push({type: 'overdrive', team: under});
 }
 
 function setPhase(phase) {
@@ -293,6 +344,14 @@ function endRound(forced) {
     m.winner = forced !== undefined ? forced : standing.length === 1 ? standing[0].id : null;
     if (m.mode === 'arcade')
         return arcadeRoundEnd();
+    let team = null;
+    if (m.mode === 'team') {                 // the side still standing wins it: a point for each of them
+        const sides = new Set(standing.map(f => f.team));
+        team = forced !== undefined ? (m.teams && m.teams.get(forced)) || null : sides.size === 1 ? [...sides][0] : null;
+        m.winner = team ? (standing.find(f => f.team === team) || {}).id || m.active.find(id => m.teams.get(id) === team) : null;
+        for (const id of team ? m.active.filter(i => m.teams.get(i) === team && i !== m.winner) : [])
+            m.roundWins.set(id, (m.roundWins.get(id) || 0) + 1);
+    }
     if (m.winner)
         m.roundWins.set(m.winner, (m.roundWins.get(m.winner) || 0) + 1);
     const champ = m.world.fighters.find(f => f.id === m.winner);
@@ -305,7 +364,9 @@ function endRound(forced) {
     }
     if (m.winner && m.roundWins.get(m.winner) >= m.target)
         m.champion = m.winner;
-    pendingEvents.push({type: 'roundEnd', winner: m.winner, champion: m.champion, round: m.round,
+    if (m.shuffle && !m.champion)
+        m.reshuffle = true;
+    pendingEvents.push({type: 'roundEnd', winner: m.winner, champion: m.champion, round: m.round, team,
         stats: m.champion ? championStats(m) : null});
     setPhase(m.champion ? 'end' : 'ko');
     roster();
@@ -386,7 +447,7 @@ function restartSolo() {
 // the winner's card: rounds won and the best of the rest, the longest combo, the move that ended it
 const MOVE_NAMES = {jab: 'Jab', hook: 'Body Hook', straight: 'Straight', uppercut: 'Uppercut', airkick: 'Flying Kick',
     dive: 'Dive Kick', lunge: 'Lunging Straight', sweep: 'Low Sweep', pound: 'Ground Pound', grab: 'Throw',
-    ledgekick: 'Ledge Hop Kick',
+    ledgekick: 'Ledge Hop Kick', rage: 'Rage Art',
     katana: 'Katana', bat: 'Home-Run Bat', laser: 'Laser Blaster', grenade: 'Bouncy Bomb', thrown: 'Thrown Weapon'};
 
 function championStats(m) {
@@ -593,7 +654,8 @@ function matchTick(dt) {
         if (m.mode === 'bomb')
             bombTick(dt);
         const standing = w.fighters.filter(f => f.st !== 'ko' && f.st !== 'gone');
-        if (standing.length <= 1 && w.fighters.length >= 2 && !w.koWait)
+        const sides = new Set(standing.map(f => f.team || f.id));   // (Team Brawl: one team left ends it)
+        if (sides.size <= 1 && w.fighters.length >= 2 && !w.koWait)
             w.koWait = 1.2;              // let the K.O. play out before the round ends
         if (w.koWait) {
             w.koWait -= dt;
@@ -644,7 +706,9 @@ function snapshot() {
             f.atk ? f.atk.kind : 0, f.atk ? r1(f.atk.t / f.atk.move.dur) : f.mantle ? r1(f.mp || 0) : 0, f.combo,
             f.inv > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, r1(f.spin), f.ground ? 1 : 0,
             f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0,
-            f.ghost ? 1 : 0, f.climbStart !== undefined ? Math.round((w.time - f.climbStart) * 100) / 100 : -1]),
+            f.ghost ? 1 : 0, f.climbStart !== undefined ? Math.round((w.time - f.climbStart) * 100) / 100 : -1,
+            f.team || 0, (P.raging(w, f) ? 1 : 0) | (f.overdrive ? 2 : 0)]),
+        chrono: w.chrono ? w.chrono.phase : null,
         goals: lobbyGoals, record: climbBoard[0] || null, board: climbBoard, ballOut: !!(w.ball && w.ball.goalT !== undefined),
         cr: w.crates.map(c => [Math.round(c.x), Math.round(c.y), c.kind, c.landed ? 1 : 0]),
         sh: w.shots.map(s => [Math.round(s.x), Math.round(s.y), s.kind, Math.round(s.vx)]),

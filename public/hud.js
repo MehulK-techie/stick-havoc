@@ -271,7 +271,7 @@ const Hud = (() => {
     // ------------------------------------------------------------ the match settings (host console)
     const LABELS = {
         mode: ['Game mode', {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', lava: 'Floor Is Lava',
-            random: 'Random', shuffle: 'Banger Shuffle'}],
+            team: 'Team Brawl', chrono: 'Chrono Shift', random: 'Random', shuffle: 'Banger Shuffle'}],
         target: ['Match', {3: 'First to 3', 5: 'First to 5', 7: 'First to 7'}],
         timer: ['Round timer', {45: '45 s', 60: '60 s', 90: '90 s', 0: '∞'}],
         weapons: ['Weapons', {true: 'On', false: 'Off'}],
@@ -324,9 +324,12 @@ const Hud = (() => {
         rows.textContent = '';
         for (const [key, [title, names]] of Object.entries(LABELS)) {
             const nameOf = value => names ? names[value] : key === 'map' ? (value === 'random' ? 'Random' :
-                value === 'shuffle' ? 'Banger Shuffle' : Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
-            rows.appendChild(optionRow(title, choices[key], nameOf, sel[key], !isHost,
-                value => send({t: 'settings', key, value})));
+                Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
+            // (Banger Shuffle deals the map with the mode, every round: the map row steps aside)
+            const shuffled = key === 'map' && sel.mode === 'shuffle';
+            const row = optionRow(shuffled ? 'Map · dealt by Banger Shuffle' : title, choices[key], nameOf,
+                shuffled ? null : sel[key], !isHost || shuffled, value => send({t: 'settings', key, value}));
+            rows.appendChild(row);
         }
         $('sSolo').classList.toggle('hidden', !isHost);
         settingsAlone = isAlone(isHost);

@@ -48,7 +48,7 @@
                 // the parkour tower, up to the ceiling: start on the first step, the pad at the top stops the clock
                 {x: 1440, y: 450, w: 90, h: 12, oneWay: true, parkour: 'start'}, {x: 1260, y: 350, w: 80, h: 12, oneWay: true},
                 {x: 1440, y: 250, w: 70, h: 12, oneWay: true}, {x: 1270, y: 150, w: 60, h: 12, oneWay: true},
-                {x: 1420, y: 70, w: 110, h: 12, oneWay: true, parkour: 'finish'}],
+                {x: 1420, y: 95, w: 110, h: 12, oneWay: true, parkour: 'finish'}],   // (clear of the ceiling lamp)
             climbZone: 1220,                  // left of this, a climber has left the tower: their clock resets
             climbers: 4,                      // at most this many on the clock at once
             stations: {wardrobe: {x: 250, y: 800}, console: {x: 800, y: 800}, dojo: {x: 1040, y: 800},

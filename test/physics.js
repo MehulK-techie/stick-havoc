@@ -223,7 +223,7 @@ function run(w, frames, inputs) {
 {   // the parkour tower: the clock starts on the first step and stops at the top
     const w = world('lobby'); const f = fighter(w, 1, 1480, 440); f.ground = false;
     run(w, 3, {});
-    Object.assign(f, {x: 1470, y: 60, vy: 100, ground: false});
+    Object.assign(f, {x: 1470, y: 85, vy: 100, ground: false});   // (just above the FINISH pad)
     const ev = run(w, 3, {});
     check('the climb is timed', ev.some(e => e.type === 'climb' && e.id === 1 && e.t >= 0));
 }

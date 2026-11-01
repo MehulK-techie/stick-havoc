@@ -59,7 +59,7 @@ const Lobby = (() => {
         console_(ctx, t);
         dummyPost(ctx);
         dojo(ctx, t);
-        parkour(ctx);
+        parkour(ctx, t);
         goal(ctx, t);
     }
 
@@ -246,7 +246,7 @@ const Lobby = (() => {
     }
 
     // the parkour tower: where the clock starts and stops, and the best run so far
-    function parkour(ctx) {
+    function parkour(ctx, t) {
         // the billboard, between the stadium screen and the tower: the five best runs, one per climber
         const bx = 1132, by = 168, bw = 118, board = state.board || [];
         ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
@@ -275,15 +275,37 @@ const Lobby = (() => {
         for (const p of MAPS.lobby.plats) {
             if (!p.parkour)
                 continue;
-            ctx.fillStyle = p.parkour === 'finish' ? 'rgba(250, 204, 21, 0.85)' : 'rgba(34, 211, 238, 0.85)';
-            ctx.fillRect(p.x, p.y - 3, p.w, 3);
-            ctx.textAlign = 'center';
-            ctx.font = '700 10px system-ui, sans-serif';
-            // the finish sits under the top-right buttons, so its label hangs below the platform
-            if (p.parkour === 'finish')
-                ctx.fillText('FINISH', p.x + p.w / 2, p.y + 16);
-            else
+            if (p.parkour === 'finish') {             // a green hologram badge over the pad, pulsing, with sparkles
+                const cx = p.x + p.w / 2, pulse = 0.5 + 0.5 * Math.sin(t * 3);
+                ctx.save();
+                ctx.shadowColor = '#4ade80';
+                ctx.shadowBlur = 8 + pulse * 10;
+                ctx.fillStyle = '#4ade80';
+                ctx.fillRect(p.x, p.y - 3, p.w, 3);
+                rounded(ctx, cx - 40, p.y - 30, 80, 20, 10);
+                ctx.fillStyle = `rgba(74, 222, 128, ${0.1 + pulse * 0.08})`;
+                ctx.fill();
+                ctx.strokeStyle = `rgba(74, 222, 128, ${0.55 + pulse * 0.4})`;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.textAlign = 'center';
+                ctx.font = '800 11px system-ui, sans-serif';
+                ctx.fillStyle = '#bbf7d0';
+                ctx.fillText('🏁 FINISH', cx, p.y - 16);
+                ctx.shadowBlur = 6;
+                for (let i = 0; i < 5; i++) {         // sparkles drifting up off the pad
+                    const k = (t * 0.6 + i / 5) % 1, sx = p.x + 10 + ((i * 37) % (p.w - 20));
+                    ctx.globalAlpha = 1 - k;
+                    ctx.fillRect(sx, p.y - 4 - k * 34, 2, 2);
+                }
+                ctx.restore();
+            } else {
+                ctx.fillStyle = 'rgba(34, 211, 238, 0.85)';
+                ctx.fillRect(p.x, p.y - 3, p.w, 3);
+                ctx.textAlign = 'center';
+                ctx.font = '700 10px system-ui, sans-serif';
                 ctx.fillText('START ▲ CLIMB', p.x + p.w / 2, p.y - 10);
+            }
         }
     }
 

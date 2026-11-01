@@ -20,6 +20,12 @@
     const particles = [], floaters = [], banners = [], ghosts = [];
     const heads = new Map(), shownHp = new Map(), flashes = new Map();
     const cam = {x: W / 2, y: H / 2, z: 1, shake: 0, kx: 0, ky: 0, flash: 0, slow: 0, slowX: 0, slowY: 0};
+    const TEAM_COLORS = {red: '#ff3b5c', blue: '#3b82f6'};   // Team Brawl: neon red, electric blue
+
+    function rounded(c, x, y, w, h, r) {
+        c.beginPath();
+        c.roundRect ? c.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2)) : c.rect(x, y, w, h);
+    }
     let lastPhase = null, snapCount = 0;
     const params = new URLSearchParams(location.search);
 
@@ -1036,11 +1042,23 @@
             ctx.fillStyle = '#94a3b8';
             ctx.fillText(`${Weapons.KINDS[f.weapon].name.toUpperCase()} ${'●'.repeat(f.uses || 0)}`, f.x, ty + 30);
         }
-        if (s.scene === 'match' && s.mode === 'rumble') {
-            ctx.fillStyle = 'rgba(148, 163, 184, 0.25)';
-            ctx.fillRect(f.x - 28, ty + 6, 56, 4);
-            ctx.fillStyle = f.color;
-            ctx.fillRect(f.x - 28, ty + 6, 56 * Math.max(0, f.hp) / 100, 4);
+        // more than two on the stage: a small health bar under every name (the bars across the top are for two)
+        if (s.scene === 'match' && s.f.filter(o => o[0] !== 0).length > 2) {
+            const hp = Math.max(0, Math.min(100, f.hp)) / 100;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            rounded(ctx, f.x - 22, ty + 5, 44, 5, 3);
+            ctx.fill();
+            if (hp > 0) {
+                ctx.fillStyle = hp > 0.5 ? '#4ade80' : hp >= 0.25 ? '#fbbf24' : '#f43f5e';
+                rounded(ctx, f.x - 22, ty + 5, Math.max(5, 44 * hp), 5, 3);
+                ctx.fill();
+            }
+            if (f.team) {                             // Team Brawl: the bar's border is the team's colour
+                ctx.strokeStyle = TEAM_COLORS[f.team];
+                ctx.lineWidth = 1.2;
+                rounded(ctx, f.x - 22.5, ty + 4.5, 45, 6, 3);
+                ctx.stroke();
+            }
         }
         if (f.bomb) {
             ctx.font = '700 13px ui-monospace, monospace';
@@ -1243,11 +1261,11 @@
         ctx.textAlign = 'right';
         const text = `CLIMB: ${me[19].toFixed(2)}s`, w = ctx.measureText(text).width + 22;
         ctx.fillStyle = 'rgba(17, 24, 39, 0.9)';
-        ctx.fillRect(cw - 16 - w, 58, w, 30);
+        ctx.fillRect(cw - 16 - w, 100, w, 30);       // (below the tower's FINISH badge)
         ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
-        ctx.strokeRect(cw - 16 - w, 58, w, 30);
+        ctx.strokeRect(cw - 16 - w, 100, w, 30);
         ctx.fillStyle = '#e5e7eb';
-        ctx.fillText(text, cw - 27, 78);
+        ctx.fillText(text, cw - 27, 120);
         ctx.restore();
     }
 

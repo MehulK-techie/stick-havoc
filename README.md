@@ -66,7 +66,8 @@ has joined (their names over their heads). Three stations:
   their own clock. Step on `START ▲ CLIMB` and yours runs, over your head
   (`Mehul: 2.34s`) and at the top right of your screen (`CLIMB: 0.00s`);
   a fifth climber is told to wait. Reach `FINISH` for gold fireworks and
-  your time. Drop back to the floor, or wander off the tower to the left,
+  your time (the pad wears a pulsing green `🏁 FINISH` badge, clear of the
+  ceiling lamp). Drop back to the floor, or wander off the tower to the left,
   and your clock resets. The `LOBBY CLIMB RECORD` billboard beside the
   tower lists the five best runs, one per climber, for the session.
 - **Host console** (middle): the stadium screen high on the wall shows the
@@ -202,6 +203,10 @@ nearest opponent close by, as in Tekken.
   The combo counter at the left edge counts your hits and damage; callouts
   pop over the fighters: `UPPERCUT!`, `PARRY!`, `GUARD BREAK!`, `THROW!`,
   `3x COMBO!`, and `CLUTCH REVERSAL!` when a fighter under 25% lands the K.O.
+- **Health**: with two on the stage, the bars run across the top. With
+  three or more, every fighter carries a small bar under their name: green
+  over half, amber down to a quarter, crimson below (in Team Brawl its
+  border is the team's colour).
 - **Weapons** (when on): every 14-20 s a crate parachutes onto a platform.
   Walk over it (or `E`) to take the weapon; `J` uses it, `E` throws it.
   No need to wait for it to land: jump up to a falling crate and press `E`,

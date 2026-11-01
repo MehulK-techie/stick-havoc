@@ -675,22 +675,38 @@ function removePlayer(id) {
     roster();
 }
 
-// a feedback entry, appended to feedback.json (written to a temporary file, then renamed over it,
-// so a crash mid-write never leaves half a file). Returns null, or why it wasn't kept.
-function saveFeedback(p, category, text) {
-    let list = [];
+// the feedback list, kept in memory; read from disk only when the file has changed under us (the host
+// cleared or edited it), so a stream of notes never means a stream of re-reads
+const feedbackCache = {list: null, mtime: null};
+function feedbackList() {
+    let mtime = null;
     try {
-        list = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'));
-        if (!Array.isArray(list))
-            throw new Error('not a list');
-    } catch (e) {
-        if (e.code !== 'ENOENT' && fs.existsSync(FEEDBACK_FILE)) {   // unreadable: set it aside, start a new one
+        mtime = fs.statSync(FEEDBACK_FILE).mtimeMs;
+    } catch { /* no file yet */ }
+    if (feedbackCache.list && mtime === feedbackCache.mtime)
+        return feedbackCache.list;
+    let list = [];
+    if (mtime !== null) {
+        try {
+            list = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'));
+            if (!Array.isArray(list))
+                throw new Error('not a list');
+        } catch {                                  // unreadable: set it aside (never overwritten), start a new one
             const aside = FEEDBACK_FILE.replace(/\.json$/, '') + `.unreadable-${Date.now()}.json`;
             fs.renameSync(FEEDBACK_FILE, aside);
             console.log(`[Feedback] ${path.basename(FEEDBACK_FILE)} couldn't be read; kept it as ${path.basename(aside)}`);
+            list = [];
+            mtime = null;
         }
-        list = [];
     }
+    Object.assign(feedbackCache, {list, mtime});
+    return list;
+}
+
+// a feedback entry, appended to feedback.json (written to a temporary file, then renamed over it,
+// so a crash mid-write never leaves half a file). Returns null, or why it wasn't kept.
+function saveFeedback(p, category, text) {
+    const list = feedbackList();
     if (list.length >= FEEDBACK_MAX)
         return 'The feedback box is full: ask the host to clear it.';
     const entry = {author: p.name, category: FEEDBACK[category], text, timestamp: new Date().toISOString()};
@@ -698,6 +714,7 @@ function saveFeedback(p, category, text) {
     const tmp = `${FEEDBACK_FILE}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(list, null, 2) + '\n');
     fs.renameSync(tmp, FEEDBACK_FILE);
+    feedbackCache.mtime = fs.statSync(FEEDBACK_FILE).mtimeMs;
     const oneLine = text.replace(/\s+/g, ' ');
     console.log(`[Feedback] Received ${entry.category} from ${entry.author}: ` +
         (oneLine.length > 200 ? oneLine.slice(0, 200) + '…' : oneLine));
@@ -735,7 +752,11 @@ function applyLook(p, m) {
     roster();
 }
 
-wss.on('connection', ws => {
+const feedbackFrom = new Map();       // address -> when its last note came in
+let feedbackAt = 0;                   // when the room's last note came in
+
+wss.on('connection', (ws, req) => {
+    const addr = req.socket.remoteAddress || '?';
     if (humans().length >= Math.min(MAX_PLAYERS, sel.limit)) {
         send(ws, {type: 'full'});
         return ws.close();
@@ -832,8 +853,14 @@ wss.on('connection', ws => {
             const text = m.text.replace(/[^\P{C}\n]/gu, '').trim().slice(0, 1000);
             if (!text)
                 return send(ws, {type: 'feedbackRefused', why: 'Write something first.'});
-            if (now - (me.lastFeedback || 0) < 15000)
+            // one every 15 s from each computer (a new connection doesn't reset it), and one every 2 s for the
+            // whole room; the clock starts with the attempt, whatever its outcome
+            if (now - (feedbackFrom.get(addr) || 0) < 15000)
                 return send(ws, {type: 'feedbackRefused', why: 'One every 15 seconds, please.'});
+            if (now - feedbackAt < 2000)
+                return send(ws, {type: 'feedbackRefused', why: 'The box is busy: try again in a moment.'});
+            feedbackFrom.set(addr, now);
+            feedbackAt = now;
             let why;
             try {
                 why = saveFeedback(me, m.category, text);
@@ -841,8 +868,6 @@ wss.on('connection', ws => {
                 console.error(`[!] feedback couldn't be saved: ${e.message}`);
                 why = "The host's computer couldn't save it.";
             }
-            if (!why)
-                me.lastFeedback = now;
             send(ws, why ? {type: 'feedbackRefused', why} : {type: 'feedbackSaved'});
         } else if (m.t === 'lobby' && isHost && scene === 'match') {
             backToLobby();

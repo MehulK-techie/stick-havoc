@@ -121,6 +121,15 @@ has joined (their names over their heads). Three stations:
 | Punch where you point | left click | |
 | Emojis 🔥 💀 🤡 🚀 · vote | `5`–`8` · `1` `2` | the buttons |
 
+**Rebinding**: `⌨️ Controls` (top right; in a match, beside `? Moves`) lists
+every action with its keys. Click one and press the new key; `+` adds a
+second or third key, right-click removes one, `Reset to defaults` puts them
+back. A key moves to its new action (unless it's another action's only key),
+and the game keeps `Esc`, `Shift`, `Enter`, `Tab`, `P`, `B`, `Q`, `R` and the
+number keys for its own menus. The bar along the bottom and the input feed
+show your own keys. Saved in this browser (`localStorage`,
+`stick_havoc_keys`), with your name and look (`sh-look`).
+
 On a phone: a joystick appears wherever your left thumb lands (sideways
 moves, down guards, up aims the launcher); J, K, L and W sit on the right
 thumb's arc with E and G beside them, and every press gives a short buzz
@@ -229,6 +238,6 @@ Nothing is loaded from the internet: the QR code is made by the server.
 ## Tests
 
 ```sh
-npm test                    # the simulation, then a whole session over WebSockets
+npm test                    # the simulation, the key bindings, then a whole session over WebSockets
 node test/shot.js OUT_DIR   # screenshots in headless Firefox, driven with real key presses
 ```

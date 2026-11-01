@@ -1275,12 +1275,7 @@
     }
 
     // ------------------------------------------------------------ input
-    const KEYS = {
-        KeyA: IN.LEFT, ArrowLeft: IN.LEFT, KeyD: IN.RIGHT, ArrowRight: IN.RIGHT,
-        KeyW: IN.UP | IN.JUMP, ArrowUp: IN.UP | IN.JUMP, Space: IN.JUMP, KeyS: IN.DOWN, ArrowDown: IN.DOWN,
-        KeyJ: IN.LIGHT, KeyZ: IN.LIGHT, KeyK: IN.HEAVY, KeyX: IN.HEAVY, KeyL: IN.DASH, KeyC: IN.DASH,
-        KeyG: IN.GRAB,
-    };
+    Keys.load(localStorage);              // (keys.js: the bindings, the player's own if they've changed them)
     const held = new Map();
     let touchBits = 0, mouseBits = 0, aim = null, sentK = -1, sentAim = null;
 
@@ -1292,7 +1287,7 @@
     }
 
     function pushInput(force) {
-        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() ? 0 : bits();
+        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() ? 0 : bits();
         if (sparring)
             return Spar.input(k, mouseBits ? aim : null);
         if (force || k !== sentK || aim !== sentAim) {
@@ -1307,16 +1302,17 @@
         const k = bits();
         const me = fighterNow(myId), air = me && !me[14];
         const up = k & IN.UP, down = k & IN.DOWN;
+        const J = Keys.first('punch'), K = Keys.first('launcher');
         if (bit & IN.LIGHT)
-            return up && !air ? '↑ + J  LAUNCH' : 'J  PUNCH';
+            return up && !air ? `↑ + ${J}  LAUNCH` : `${J}  PUNCH`;
         if (bit & IN.HEAVY)
-            return air ? (down ? '↓ + K  DIVE' : 'K  AIR KICK') : 'K  LAUNCHER';
+            return air ? (down ? `↓ + ${K}  DIVE` : `${K}  AIR KICK`) : `${K}  LAUNCHER`;
         if (bit & IN.DASH)
-            return 'L  DASH';
+            return `${Keys.first('dash')}  DASH`;
         if (bit & IN.GRAB)
-            return 'G  GRAB';
+            return `${Keys.first('grab')}  GRAB`;
         if (bit & IN.USE)
-            return 'E  WEAPON';
+            return `${Keys.first('use')}  WEAPON`;
         if (bit & IN.JUMP)
             return 'JUMP';
         if (bit & IN.LEFT)
@@ -1348,8 +1344,10 @@
     }
 
     window.addEventListener('keydown', e => {
+        if (Hud.isControlsOpen())               // (the Controls window is listening for a key)
+            return;
         if (Hud.isDrawerOpen()) {
-            if (e.code === 'Escape' || e.code === 'KeyE')
+            if (e.code === 'Escape' || Keys.is(e.code, 'use'))
                 Hud.closeDrawer();
             return;
         }
@@ -1374,7 +1372,7 @@
             return;
         }
         if (Hud.isSettingsOpen()) {
-            if (e.code === 'KeyE')
+            if (Keys.is(e.code, 'use'))
                 Hud.closeSettings();
             else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && myId === hostId) {
                 sendMsg({t: 'console', do: 'start'});
@@ -1386,25 +1384,25 @@
             startSpar();
             return;
         }
-        if (e.code === 'KeyE' && (scene === 'match' || sparring)) {     // in a match, E picks up / throws a weapon
+        if (Keys.is(e.code, 'use') && (scene === 'match' || sparring)) {   // in a match, E picks up / throws a weapon
             e.preventDefault();
             if (!e.repeat) {
-                held.set('KeyE', IN.USE);
+                held.set(e.code, IN.USE);
                 Hud.feed('E  WEAPON');
                 pushInput();
             }
             return;
         }
-        if (e.code in KEYS) {
+        if (Keys.bits(e.code) && !Keys.is(e.code, 'use')) {
             e.preventDefault();
             if (!e.repeat) {
-                held.set(e.code, KEYS[e.code]);
-                const label = feedFor(KEYS[e.code]);
+                held.set(e.code, Keys.bits(e.code));
+                const label = feedFor(Keys.bits(e.code));
                 if (label)
                     Hud.feed(label);
             }
             pushInput();
-        } else if (e.code === 'KeyE' && !e.repeat) {
+        } else if (Keys.is(e.code, 'use') && !e.repeat) {
             interact();
         } else if ((e.code === 'KeyQ' || e.code === 'Tab') && Lobby.state.near === 'console') {
             e.preventDefault();

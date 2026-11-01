@@ -10,21 +10,23 @@ const Hud = (() => {
     let voted = null;
 
     // ------------------------------------------------------------ the command bar
-    const COMMANDS = {
-        lobby: [['A / D', 'Move'], ['W', 'Jump'], ['J', 'Punch'], ['K', 'Launcher'], ['S', 'Guard'], ['G', 'Grab'],
-            ['L', 'Dash'], ['E', 'Use'], ['P', 'Spar'], ['Shift', 'Moves']],
-        match: [['A / D', 'Move'], ['W', 'Jump'], ['J', 'Punch'], ['K', 'Launcher'], ['S', 'Guard'], ['G', 'Grab'],
-            ['L', 'Dash'], ['E', 'Weapon']],
-    };
+    // (the keys shown are the player's own bindings: keys.js)
+    function commands(scene) {
+        const k = Keys.first;
+        const fight = [[`${k('left')} / ${k('right')}`, 'Move'], [k('jump'), 'Jump'], [k('punch'), 'Punch'],
+            [k('launcher'), 'Launcher'], [k('guard'), 'Guard'], [k('grab'), 'Grab'], [k('dash'), 'Dash']];
+        return scene === 'lobby' ? [...fight, [k('use'), 'Use'], ['P', 'Spar'], ['Shift', 'Moves']] :
+            [...fight, [k('use'), 'Weapon']];
+    }
     let shownScene = null;
 
-    function setScene(scene) {
-        if (scene === shownScene)
+    function setScene(scene, force) {
+        if (scene === shownScene && !force)
             return;
         shownScene = scene;
         const bar = $('commands');
         bar.textContent = '';
-        for (const [key, what] of COMMANDS[scene]) {
+        for (const [key, what] of commands(scene)) {
             const el = document.createElement('div');
             el.className = 'cmd';
             const k = document.createElement('b');
@@ -330,6 +332,98 @@ const Hud = (() => {
     $('sClose').addEventListener('click', closeSettings);
 
     // ------------------------------------------------------------ the move list
+    // ------------------------------------------------------------ the controls: rebinding the keys
+    let listening = null;             // {id, i}: the key slot waiting for a key press
+    const isControlsOpen = () => !$('controls').classList.contains('hidden');
+
+    function renderControls(note) {
+        const rows = $('cRows');
+        rows.textContent = '';
+        for (const [id, title] of Keys.ACTIONS) {
+            const row = document.createElement('div');
+            row.className = 'row';
+            const label = document.createElement('span');
+            label.textContent = title;
+            const keys = document.createElement('div');
+            keys.className = 'keys';
+            const slot = (text, i, cls) => {
+                const b = document.createElement('button');
+                b.textContent = listening && listening.id === id && listening.i === i ? '…' : text;
+                b.className = listening && listening.id === id && listening.i === i ? 'listen' : cls || '';
+                b.title = cls === 'add' ? 'Add a key' : 'Click, then press the new key';
+                b.addEventListener('click', () => {
+                    listening = {id, i};
+                    renderControls();
+                });
+                return b;
+            };
+            Keys.binds[id].forEach((code, i) => {
+                const b = slot(Keys.label(code), i);
+                b.addEventListener('contextmenu', e => {      // right-click: remove (an action keeps at least one)
+                    e.preventDefault();
+                    Keys.unbind(id, code);
+                    saveKeys();
+                });
+                keys.appendChild(b);
+            });
+            if (Keys.binds[id].length < Keys.MAX)
+                keys.appendChild(slot('+', Keys.binds[id].length, 'add'));
+            row.append(label, keys);
+            rows.appendChild(row);
+        }
+        $('cNote').textContent = note || '';
+    }
+
+    function saveKeys(note) {
+        Keys.save(localStorage);
+        setScene(shownScene, true);
+        renderControls(note);
+    }
+
+    function openControls() {
+        listening = null;
+        renderControls();
+        $('controls').classList.remove('hidden');
+        Sfx.play('open');
+    }
+
+    function closeControls() {
+        listening = null;
+        $('controls').classList.add('hidden');
+    }
+
+    // the key press that rebinds (taken before the game sees it)
+    window.addEventListener('keydown', e => {
+        if (!isControlsOpen())
+            return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!listening) {
+            if (e.code === 'Escape')
+                closeControls();
+            return;
+        }
+        if (e.code === 'Escape') {
+            listening = null;
+            return renderControls();
+        }
+        const {id, i} = listening;
+        listening = null;
+        if (Keys.bind(id, e.code, i)) {
+            Sfx.play('ui');
+            saveKeys();
+        } else {
+            renderControls(Keys.RESERVED.includes(e.code) ? `${Keys.label(e.code)} is kept for the game's own menus.` :
+                `${Keys.label(e.code)} is the only key for another action: give that one a new key first.`);
+        }
+    }, true);
+    $('keysBtn').addEventListener('click', openControls);
+    $('cDone').addEventListener('click', closeControls);
+    $('cReset').addEventListener('click', () => {
+        Keys.reset();
+        saveKeys('Back to the default keys.');
+    });
+
     const toggleMoves = force => $('moves').classList.toggle('hidden', force === undefined ? undefined : !force);
     $('movesBtn').addEventListener('click', () => toggleMoves());
     $('moves').addEventListener('click', () => toggleMoves(false));
@@ -360,6 +454,6 @@ const Hud = (() => {
     return {
         init(sender) { send = sender; },
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
-        openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo,
+        openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo, isControlsOpen, openControls,
     };
 })();

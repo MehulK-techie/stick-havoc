@@ -20,7 +20,10 @@
   </div>
   <div class="b3"><span class="tag" id="ver">v1.2.0-tournament</span><span class="tag">MIT License</span></div>
 </header>
-<button id="movesBtn" class="panel" title="Move list (Shift)">? <span class="txt">Moves</span> <kbd>Shift</kbd></button>
+<div id="corner">
+  <button id="keysBtn" class="panel" title="Rebind your keys">⌨️ <span class="txt">Controls</span></button>
+  <button id="movesBtn" class="panel" title="Move list (Shift)">? <span class="txt">Moves</span> <kbd>Shift</kbd></button>
+</div>
 <div id="combo" class="hidden"></div>
 
 <!-- in a match -->
@@ -71,7 +74,18 @@
     <tr><td>hanging: <kbd>W</kbd> · <kbd>J</kbd> · <kbd>S</kbd></td><td>Climb up · hop kick over the lip (16) · let go</td></tr>
     <tr><td><kbd>E</kbd> at a falling crate</td><td>Snatch its weapon out of the air (an air attack works too)</td></tr>
   </table>
-  <p class="sub">Hitting someone in the middle of their attack is a <b>COUNTER</b> (+25%).</p>
+  <p class="sub">Hitting someone in the middle of their attack is a <b>COUNTER</b> (+25%).
+    The default keys are shown; <b>⌨️ Controls</b> rebinds them.</p>
+</div>
+
+<!-- rebinding the keys -->
+<div id="controls" class="panel hidden" role="dialog" aria-label="Controls">
+  <h2>Controls</h2>
+  <p class="sub">Click a key, then press the new one (<kbd>Esc</kbd> cancels). <kbd>+</kbd> adds another;
+    right-click a key to remove it. Kept in this browser.</p>
+  <div id="cRows"></div>
+  <div class="note" id="cNote"></div>
+  <div class="foot"><button id="cReset">Reset to defaults</button><button id="cDone" class="primary">Done</button></div>
 </div>
 
 <!-- the host's console: the room's settings -->
@@ -105,6 +119,7 @@
 
 <script src="weapons.js"></script>
 <script src="physics.js"></script>
+<script src="keys.js"></script>
 <script src="bot.js"></script>
 <script src="audio.js"></script>
 <script src="hud.js"></script>

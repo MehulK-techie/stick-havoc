@@ -105,10 +105,26 @@ body.touch #brand { padding: 5px 9px; }
 #brand a:hover { text-decoration: underline; }
 .tag { padding: 1px 6px; border: 1px solid var(--line-2); border-radius: 5px; color: var(--dim); font-weight: 600; }
 body.in-match #brand { display: none; }
-#movesBtn { position: fixed; top: 12px; right: 12px; z-index: 6; font-weight: 600; font-size: 12px; padding: 6px 10px; }
-body.in-match #movesBtn { top: auto; bottom: 12px; right: auto; left: 50%; transform: translateX(calc(-50% + 420px)); }
-@media (max-width: 1200px) { body.in-match #movesBtn { left: auto; right: 12px; transform: none; bottom: 140px; } }
-body.touch #movesBtn { top: 12px; bottom: auto; right: 12px; left: auto; transform: none; }
+/* the corner buttons: the controls and the move list */
+#corner { position: fixed; top: 12px; right: 12px; z-index: 6; display: flex; gap: 6px; }
+#corner button { font-weight: 600; font-size: 12px; padding: 6px 10px; }
+body.in-match #corner { top: auto; bottom: 12px; right: auto; left: 50%; transform: translateX(calc(-50% + 420px)); }
+@media (max-width: 1200px) { body.in-match #corner { left: auto; right: 12px; transform: none; bottom: 140px; } }
+body.touch #corner { top: 12px; bottom: auto; right: 12px; left: auto; transform: none; }
+body.touch #keysBtn { display: none; }
+/* the controls window: click a key, press the new one */
+#controls { background: rgba(15, 20, 32, 0.98); position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 10;
+            padding: 18px 20px; width: min(520px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; }
+#controls h2 { margin: 0 0 4px; font-size: 18px; }
+#controls .sub { color: var(--dim); font-size: 12px; margin: 0 0 10px; }
+#controls .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0;
+                 border-top: 1px solid var(--line); }
+#controls .keys { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+#controls .keys button { min-width: 38px; font-size: 12px; padding: 4px 8px; font-family: ui-monospace, monospace; }
+#controls .keys button.listen { border-color: var(--accent); color: var(--accent); background: rgba(34, 211, 238, 0.12); }
+#controls .keys button.add { color: var(--dim); }
+#controls .foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
+#controls .note { color: var(--gold); font-size: 12px; min-height: 16px; margin-top: 8px; }
 /* the move list */
 #moves { background: rgba(15, 20, 32, 0.98); position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 9; padding: 18px 20px;
          width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; }
@@ -174,5 +190,5 @@ body.touch #emojis { top: 10px; right: 60px; bottom: auto; transform: none; flex
                 font-size: 12px; color: var(--dim); }
 /* the cinematic: the HUD steps aside */
 body.cinematic #info, body.cinematic #board, body.cinematic #emojis, body.cinematic #commands, body.cinematic #feed,
-body.cinematic #combo, body.cinematic #movesBtn, body.cinematic #vote, body.cinematic #touch { opacity: 0; pointer-events: none; }
-#info, #board, #emojis, #commands, #feed, #movesBtn, #touch { transition: opacity 250ms; }
+body.cinematic #combo, body.cinematic #corner, body.cinematic #vote, body.cinematic #touch { opacity: 0; pointer-events: none; }
+#info, #board, #emojis, #commands, #feed, #corner, #touch { transition: opacity 250ms; }

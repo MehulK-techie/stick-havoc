@@ -7,12 +7,17 @@ const {spawn} = require('child_process');
 const WebSocket = require('ws');
 const P = require('../public/physics.js');
 const PORT = 3999;
+const fs = require('fs'), os = require('os'), path = require('path');
+const FEEDBACK_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sh-fb-')), 'feedback.json');
 const srv = spawn(process.execPath, [require.resolve('../server.js')],
-    {env: {...process.env, PORT, VOTE_EVERY: 4, BOMB_FUSE: 3}});
+    {env: {...process.env, PORT, VOTE_EVERY: 4, BOMB_FUSE: 3, FEEDBACK_FILE}});
 let out = '';
 srv.stdout.on('data', d => out += d);
 srv.stderr.on('data', d => process.stderr.write(d));
-process.on('exit', () => srv.kill());                 // never leave a server holding the port
+process.on('exit', () => {                            // never leave a server holding the port
+    srv.kill();
+    fs.rmSync(path.dirname(FEEDBACK_FILE), {recursive: true, force: true});
+});
 process.on('uncaughtException', e => { console.error(e); srv.kill(); process.exit(1); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let seen = new Set(), last = null, failures = 0, evs = [];
@@ -86,6 +91,22 @@ async function brawl(fighters, ms) {
     // ---------------- the lobby
     check('everyone arrives in the lobby, with the dummy', last.scene === 'lobby' && last.f.length === 4 &&
         last.f.some(f => f[0] === 0));
+    // feedback: saved to feedback.json on the host, logged; empty notes and floods turned away
+    a.send({t: 'feedback', category: 'bug', text: '  The ball \u0007got stuck\nin the net  '});
+    await sleep(300);
+    a.send({t: 'feedback', category: 'feature', text: 'and another'});
+    c.send({t: 'feedback', category: 'general', text: '   '});
+    c.send({t: 'feedback', category: 'toString', text: 'sneaky'});
+    await sleep(300);
+    const nm = a.roster.list.find(p => p.id === a.id).name;
+    let saved = [];
+    try { saved = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8')); } catch { /* checked below */ }
+    check('feedback is written to feedback.json, cleaned, with author and time', saved.length === 1 &&
+        saved[0].author === nm && saved[0].category === 'Bug Report' && saved[0].text === 'The ball got stuck\nin the net' &&
+        !isNaN(Date.parse(saved[0].timestamp)) && a.got.some(m => m.type === 'feedbackSaved'));
+    check('the host terminal shows it', out.includes(`[Feedback] Received Bug Report from ${nm}: The ball got stuck in the net`));
+    check('a second note within 15 s, and an empty one, are turned away', a.got.some(m => m.type === 'feedbackRefused') &&
+        c.got.some(m => m.type === 'feedbackRefused'));
     // a second tab restoring a saved colour someone already wears: given a free one, and told
     const mine = a.roster.list.find(p => p.id === a.id).color;
     c.send({t: 'look', color: mine, restore: true});

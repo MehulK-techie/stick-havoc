@@ -98,6 +98,13 @@ has joined (their names over their heads). Three stations:
 
   In either, `R` restarts the round at once (after the last round, the
   whole match), and `Esc` or Back to lobby in the corner leaves.
+- **Feedback & Bugs** (bottom right of the lobby): a bug report, a feature
+  request or general feedback, up to 1000 characters. It's saved on the
+  host's computer in `feedback.json` next to `server.js` (author, category,
+  text, time; not in git), and the host's terminal prints it
+  (`[Feedback] Received Bug Report from Ana: ...`). One note every 15 s per
+  player; the file keeps up to 5000. If the file can't be read it's set
+  aside (`feedback.unreadable-<time>.json`) and a new one started.
 - **Training dummy** (right): it springs back from every hit and pops the
   damage (`5 DMG`, `BOOM!`, `CRIT!`); three hits into a combo it starts
   talking back (`OOF!`, `NICE COMBO!`, `OKAY, OKAY!`, `I YIELD!`). Players can knock each other about in

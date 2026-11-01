@@ -57,6 +57,8 @@
                 Lobby.state.near = serverNear = m.station;
                 if (m.station)
                     Sfx.play('near');
+            } else if (m.type === 'feedbackSaved' || m.type === 'feedbackRefused') {
+                Hud.feedbackAnswer(m);
             } else if (m.type === 'colorAssigned') {   // the saved colour was taken: this one is yours now
                 const named = (colors.find(c => c[1] === m.color) || ['a free colour'])[0];
                 Hud.toast(`Notice: Saved color was taken, assigned ${named}!`, 5000);
@@ -1292,7 +1294,8 @@
     }
 
     function pushInput(force) {
-        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() || Hud.isSoloOpen() ? 0 : bits();
+        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() || Hud.isSoloOpen() ||
+            Hud.isFeedbackOpen() ? 0 : bits();
         if (sparring)
             return Spar.input(k, mouseBits ? aim : null);
         if (force || k !== sentK || aim !== sentAim) {
@@ -1351,6 +1354,11 @@
     window.addEventListener('keydown', e => {
         if (Hud.isControlsOpen())               // (the Controls window is listening for a key)
             return;
+        if (Hud.isFeedbackOpen()) {             // typing a note: the keys are the note's, not the fighter's
+            if (e.code === 'Escape')
+                Hud.closeFeedback();
+            return;
+        }
         if (Hud.isDrawerOpen()) {
             if (e.code === 'Escape' || Keys.is(e.code, 'use'))
                 Hud.closeDrawer();

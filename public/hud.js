@@ -308,6 +308,49 @@ const Hud = (() => {
     });
     $('sSolo').addEventListener('click', () => openSolo());
 
+    // ------------------------------------------------------------ feedback & bugs
+    let fbKind = 'bug';
+    const isFeedbackOpen = () => !$('feedback').classList.contains('hidden');
+
+    function openFeedback() {
+        $('feedback').classList.remove('hidden');
+        $('fbNote').textContent = '';
+        $('fbText').focus();
+        Sfx.play('open');
+    }
+
+    function closeFeedback() {
+        $('feedback').classList.add('hidden');
+        $('fbText').blur();
+    }
+
+    // the server's answer
+    function feedbackAnswer(m) {
+        if (m.type === 'feedbackSaved') {
+            $('fbText').value = '';
+            closeFeedback();
+            toast('Thanks: saved on the host\'s computer');
+        } else {
+            $('fbNote').textContent = m.why;
+        }
+    }
+    for (const b of document.querySelectorAll('#fbKinds button')) {
+        b.addEventListener('click', () => {
+            fbKind = b.dataset.k;
+            for (const o of document.querySelectorAll('#fbKinds button'))
+                o.classList.toggle('on', o === b);
+        });
+    }
+    $('fbBtn').addEventListener('click', openFeedback);
+    $('fbCancel').addEventListener('click', closeFeedback);
+    $('fbSend').addEventListener('click', () => {
+        const text = $('fbText').value.trim();
+        if (!text)
+            return ($('fbNote').textContent = 'Write something first.');
+        $('fbNote').textContent = 'Sending…';
+        send({t: 'feedback', category: fbKind, text});
+    });
+
     // ------------------------------------------------------------ 1P Solo: the arcade ladder, or a sandbox
     const SOLO = {
         map: ['Map', null],
@@ -486,6 +529,6 @@ const Hud = (() => {
         init(sender) { send = sender; },
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
         openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo, isControlsOpen, openControls,
-        openSolo, closeSolo, isSoloOpen,
+        openSolo, closeSolo, isSoloOpen, isFeedbackOpen, closeFeedback, feedbackAnswer,
     };
 })();

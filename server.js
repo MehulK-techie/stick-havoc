@@ -7,6 +7,7 @@
 // wardrobe, a punching dummy and the host's console. The host picks a
 // mode and a map there and starts the match; afterwards, back to the lobby.
 'use strict';
+const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
@@ -20,6 +21,10 @@ const Bot = require('./public/bot.js');
 const VERSION = require('./package.json').version;
 
 const PORT = Number(process.env.PORT) || 3000;
+// players' bug reports and ideas, kept on the host's computer (not in git)
+const FEEDBACK_FILE = process.env.FEEDBACK_FILE || path.join(__dirname, 'feedback.json');
+const FEEDBACK = {bug: 'Bug Report', feature: 'Feature Request', general: 'General Feedback'};
+const FEEDBACK_MAX = 5000;            // entries kept in the file; past that, new ones are turned away
 const TPS = 30;
 const MAX_PLAYERS = 15;
 const VOTE_EVERY = Number(process.env.VOTE_EVERY) || 45, VOTE_FOR = 5, HAZARD_FOR = 15;   // seconds
@@ -65,7 +70,7 @@ app.get('/info', (_req, res) => {
     res.json({urls, main, qr: qrMatrix(main)});
 });
 const server = http.createServer(app);
-const wss = new WebSocketServer({server, maxPayload: 2048});
+const wss = new WebSocketServer({server, maxPayload: 8192});   // (room for a 1000-character feedback note)
 
 // ---------------------------------------------------------------- the room
 let nextId = 1;
@@ -331,7 +336,8 @@ function arcadeRoundEnd() {
             next: Bot.STYLES[Bot.LADDER[a.stage]].name});
         return setPhase('clear');
     }
-    pendingEvents.push({type: 'gameOver', stage: a.stage + 1, by: Bot.STYLES[Bot.LADDER[a.stage]].name});
+    const by = Bot.STYLES[Bot.LADDER[Math.min(a.stage, Bot.LADDER.length - 1)]].name;
+    pendingEvents.push({type: 'gameOver', stage: a.stage + 1, by});
     setPhase('end');
 }
 
@@ -349,8 +355,14 @@ function nextArcadeStage() {
 
 // R in 1P: the round again, straight away (after the last round: the whole match, or the arcade stage)
 function restartSolo() {
-    const m = match;
-    if (m.phase === 'end') {
+    const m = match, fresh = m.phase === 'end' && !!m.arcade;
+    if (fresh) {             // the run is over (won or lost): the ladder from the bottom
+        players.delete(m.arcade.bot);
+        Object.assign(m.arcade, {stage: 0, bot: addBot(Bot.LADDER[0]), t0: Date.now()});
+        m.map = P.ARENAS[0];
+        m.roundWins = new Map(); m.champion = null; m.round = 0;
+        m.bestCombo = new Map(); m.finisher = null;
+    } else if (m.phase === 'end') {
         m.roundWins = new Map(); m.champion = null; m.round = 0;
         m.bestCombo = new Map(); m.finisher = null;
     } else {
@@ -364,6 +376,8 @@ function restartSolo() {
     m.world = null;
     pendingEvents.push({type: 'restart'});
     startRound();
+    if (fresh)
+        pendingEvents.push({type: 'match', mode: 'arcade', map: m.map, name: `STAGE 1 · ${Bot.STYLES[Bot.LADDER[0]].name.toUpperCase()}`});
 }
 
 // the winner's card: rounds won and the best of the rest, the longest combo, the move that ended it
@@ -661,6 +675,35 @@ function removePlayer(id) {
     roster();
 }
 
+// a feedback entry, appended to feedback.json (written to a temporary file, then renamed over it,
+// so a crash mid-write never leaves half a file). Returns null, or why it wasn't kept.
+function saveFeedback(p, category, text) {
+    let list = [];
+    try {
+        list = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'));
+        if (!Array.isArray(list))
+            throw new Error('not a list');
+    } catch (e) {
+        if (e.code !== 'ENOENT' && fs.existsSync(FEEDBACK_FILE)) {   // unreadable: set it aside, start a new one
+            const aside = FEEDBACK_FILE.replace(/\.json$/, '') + `.unreadable-${Date.now()}.json`;
+            fs.renameSync(FEEDBACK_FILE, aside);
+            console.log(`[Feedback] ${path.basename(FEEDBACK_FILE)} couldn't be read; kept it as ${path.basename(aside)}`);
+        }
+        list = [];
+    }
+    if (list.length >= FEEDBACK_MAX)
+        return 'The feedback box is full: ask the host to clear it.';
+    const entry = {author: p.name, category: FEEDBACK[category], text, timestamp: new Date().toISOString()};
+    list.push(entry);
+    const tmp = `${FEEDBACK_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(list, null, 2) + '\n');
+    fs.renameSync(tmp, FEEDBACK_FILE);
+    const oneLine = text.replace(/\s+/g, ' ');
+    console.log(`[Feedback] Received ${entry.category} from ${entry.author}: ` +
+        (oneLine.length > 200 ? oneLine.slice(0, 200) + '…' : oneLine));
+    return null;
+}
+
 // a colour belongs to one player at a time: freed when they change or leave
 const colorOwner = color => [...players.values()].find(p => p.color === color && !p.bot);
 
@@ -784,6 +827,23 @@ wss.on('connection', ws => {
                 return;
             }
             pendingEvents.push({type: 'console'});
+        } else if (m.t === 'feedback' && Object.hasOwn(FEEDBACK, m.category) && typeof m.text === 'string') {
+            // (control characters out, newlines kept; at most 1000 characters; one every 15 s each)
+            const text = m.text.replace(/[^\P{C}\n]/gu, '').trim().slice(0, 1000);
+            if (!text)
+                return send(ws, {type: 'feedbackRefused', why: 'Write something first.'});
+            if (now - (me.lastFeedback || 0) < 15000)
+                return send(ws, {type: 'feedbackRefused', why: 'One every 15 seconds, please.'});
+            let why;
+            try {
+                why = saveFeedback(me, m.category, text);
+            } catch (e) {
+                console.error(`[!] feedback couldn't be saved: ${e.message}`);
+                why = "The host's computer couldn't save it.";
+            }
+            if (!why)
+                me.lastFeedback = now;
+            send(ws, why ? {type: 'feedbackRefused', why} : {type: 'feedbackSaved'});
         } else if (m.t === 'lobby' && isHost && scene === 'match') {
             backToLobby();
         }

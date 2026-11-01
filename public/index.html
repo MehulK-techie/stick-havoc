@@ -98,6 +98,19 @@
   <button id="sClose">Close <kbd>Esc</kbd></button>
 </aside>
 
+<!-- bug reports and ideas: saved on the host's computer -->
+<button id="fbBtn" class="panel" title="Report a bug or suggest a feature">🐛 Feedback &amp; Bugs</button>
+<div id="feedback" class="panel hidden" role="dialog" aria-label="Feedback and bugs">
+  <h2>Feedback &amp; Bugs</h2>
+  <p class="sub">Saved on the host's computer, with your name.</p>
+  <div class="opts" id="fbKinds">
+    <button data-k="bug" class="on">Bug Report</button><button data-k="feature">Feature Request</button><button data-k="general">General Feedback</button>
+  </div>
+  <textarea id="fbText" maxlength="1000" rows="6" placeholder="Describe what happened or what you want added..."></textarea>
+  <div class="foot"><span class="note" id="fbNote"></span><span><button id="fbCancel">Cancel</button>
+    <button id="fbSend" class="primary">Submit Feedback</button></span></div>
+</div>
+
 <!-- 1P: the arcade ladder, or a sandbox of your own -->
 <div id="solo" class="panel hidden" role="dialog" aria-label="1P Solo">
   <h2>1P Solo</h2>

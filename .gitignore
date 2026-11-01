@@ -1,3 +1,5 @@
 node_modules/
 *.png
 !public/*.png
+feedback.json
+feedback.*.json

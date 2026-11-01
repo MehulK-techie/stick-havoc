@@ -421,5 +421,21 @@ function run(w, frames, inputs) {
     check("leaving the tower resets that climber's clock only", on[0].climbStart === undefined &&
         ev2.some(e => e.type === 'climbReset' && e.id === on[0].id) && on.slice(1).every(f => f.climbStart !== undefined));
 }
+{   // a K.O. lying still stays on top of the floor (it used to keep falling, a little each tick)
+    const w = world('reactor'); const a = fighter(w, 1, 700), b = fighter(w, 2, 750); a.face = 1; b.hp = 3;
+    run(w, 9, i => ({1: {k: i === 0 ? P.IN.LIGHT : 0}}));
+    run(w, 200, {});
+    check('a K.O. at rest stays on the floor for good', b.rest && b.y === 820);
+}
+{   // a pillar knocked down doesn't grow back around someone standing in its spot
+    const w = world('colosseum'); const pillar = w.plats.find(p => p.solid);
+    pillar.alive = false; pillar.respawn = 0.01;
+    const f = fighter(w, 1, pillar.x + pillar.w / 2);
+    run(w, 10, {});
+    const waited = !pillar.alive;
+    f.x = pillar.x - 200;
+    run(w, 3, {});
+    check('a pillar waits for its spot to clear before it comes back', waited && pillar.alive);
+}
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

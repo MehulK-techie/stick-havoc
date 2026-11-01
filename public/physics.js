@@ -769,13 +769,14 @@
         }
     }
 
+    // a wall splat: back off the wall at 65 %, and never down (a downward bounce could drive into the floor)
     function bounceOff(w, f, side, solid) {
-        f.vx = side * Math.abs(f.vx) * 0.62;
+        f.vx = side * Math.abs(f.vx) * 0.65;
         f.vy = Math.min(f.vy, -320);
         if (f.st !== 'ko' && !w.noDamage && !f.dummy)
             f.hp = Math.max(1, f.hp - 3);
         w.hitstop = Math.max(w.hitstop, 0.05);
-        w.events.push({type: 'wallbounce', id: f.id, x: Math.round(f.x), y: Math.round(f.y - 50)});
+        w.events.push({type: 'wallbounce', id: f.id, x: Math.round(f.x), y: Math.round(f.y - 50), pillar: !!solid});
         if (solid && solid.solid) {                  // a pillar takes the blow, and gives way after a few
             solid.hp--;
             if (solid.hp <= 0) {
@@ -835,6 +836,11 @@
                 return;
             }
         }
+        if (f.rest) {                                  // a K.O. lying still: no gravity, nothing moves it
+            if (f.restOn && f.restOn.alive)
+                return;
+            f.rest = false;                            // (unless the floor under it gives way)
+        }
         const grav = C.GRAV * w.gravity * (w.hazard === 'lowgrav' ? 0.45 : 1);
         if (f.dashT > 0 && !f.ground)
             f.vy = 0;
@@ -867,12 +873,12 @@
         }
         // pillars: solid from the side
         for (const p of w.plats) {
-            if (!p.solid || !p.alive || f.st === 'ko')
+            if (!p.solid || !p.alive)
                 continue;
             if (f.y > p.y + 4 && f.y - 94 < p.y + p.h && f.x + 20 > p.x && f.x - 20 < p.x + p.w) {
                 const side = f.x < p.x + p.w / 2 ? -1 : 1;
                 f.x = side < 0 ? p.x - 20 : p.x + p.w + 20;
-                if (hard)
+                if (hard && f.st !== 'ko')
                     bounceOff(w, f, side, p);
                 else
                     f.vx = 0;
@@ -889,7 +895,7 @@
                     f.vy = -impact * 0.35; f.vx *= 0.5;
                     w.events.push({type: 'thud', id: f.id, x: Math.round(f.x), y: Math.round(f.y)});
                 } else {                              // settled: lying flat
-                    f.vy = 0; f.vx = 0; f.rest = true; f.spinV = 0;
+                    f.vy = 0; f.vx = 0; f.rest = true; f.restOn = p; f.spinV = 0;
                     f.spin = (Math.abs(f.spin % (2 * Math.PI)) < Math.PI ? 1 : -1) * Math.PI / 2 * Math.sign(f.face || 1);
                 }
             }
@@ -1002,8 +1008,12 @@
                 if (Math.abs(dx) >= BODY || Math.abs(a.y - b.y) >= 60)
                     continue;
                 const dir = Math.sign(dx) || (a.id < b.id ? 1 : -1), push = (BODY - Math.abs(dx)) / 4;
-                a.x = Math.max(22, Math.min(W - 22, a.x - dir * push));
-                b.x = Math.max(22, Math.min(W - 22, b.x + dir * push));
+                for (const [f, d] of [[a, -dir], [b, dir]]) {
+                    const x = Math.max(22, Math.min(W - 22, f.x + d * push));
+                    if (!w.plats.some(p => p.solid && p.alive && x + 20 > p.x && x - 20 < p.x + p.w &&
+                        f.y > p.y + 4 && f.y - 94 < p.y + p.h))
+                        f.x = x;                       // (never into a pillar)
+                }
             }
         }
     }
@@ -1021,7 +1031,9 @@
                 continue;
             if (!p.alive) {
                 p.respawn -= dt;
-                if (p.respawn <= 0) {
+                const blocked = p.solid && live.some(f => f.x + 20 > p.x && f.x - 20 < p.x + p.w && f.y > p.y + 4 &&
+                    f.y - 94 < p.y + p.h);           // (a pillar never grows back around someone)
+                if (p.respawn <= 0 && !blocked) {
                     p.alive = true; p.load = 0; p.breaking = 0; p.hp = p.maxHp;
                     w.events.push({type: 'restore', x: Math.round(p.x + p.w / 2), y: p.y});
                 }

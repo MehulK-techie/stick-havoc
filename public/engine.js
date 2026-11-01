@@ -335,6 +335,10 @@
             break;
         case 'wallbounce':
             burst(ev.x, ev.y, '#e5e7eb', 14, 600);
+            if (ev.pillar)                            // a splat on a pillar: chips of stone
+                for (let i = 0; i < 12; i++)
+                    particles.push({k: 'pixel', x: ev.x, y: ev.y + (Math.random() - 0.5) * 60, vx: (Math.random() - 0.5) * 500,
+                        vy: -200 - Math.random() * 300, life: 0, max: 0.8, color: '#64748b', size: 5});
             cam.shake = Math.max(cam.shake, 10);
             Sfx.play('wallbounce');
             break;

@@ -210,9 +210,42 @@ async function brawl(fighters, ms) {
     check('the crowd voted a hazard in', seen.has('vote') && seen.has('hazard'));
     check('weapon crates parachute in', seen.has('crate'));
     check('the round clock runs', typeof last.tl === 'number' && last.tl <= 90);
+    const firstMap = last.map;
     await until(() => last.ph === 'ko', 4000);              // the K.O. plays out, then the next round
     await until(() => last.ph === 'countdown' || last.ph === 'fight', 6000);
+    check('a series never replays the arena: round 2 is a different one', last.map !== firstMap && P.ARENAS.includes(last.map));
+    check('and round 2 brings a twist', await until(() => last.twist !== null, 2000) &&
+        ['SHUFFLING LAVA', 'VOLATILE CRATES', 'OVERCHARGE', 'PINBALL HAVOC'].includes(last.twist));
     check('the loser went to the back, the next one came in', last.act.includes(queued.id) && last.q.length === 1);
+    // ---------------- the host's Bots setting, and a second fighter on one keyboard
+    a.send({t: 'lobby'});
+    await until(() => last.scene === 'lobby', 2000);
+    a.send({t: 'settings', key: 'bots', value: 2}); a.send({t: 'settings', key: 'mode', value: 'rumble'});
+    a.send({t: 'settings', key: 'surprise', value: false});
+    await sleep(200);
+    check('Bots setting: 2', last.sel.bots === 2 && last.sel.surprise === false);
+    a.send({t: 'local', on: true});
+    check('Local 2P: a second fighter joins from this browser', await until(() => a.roster.list.some(p => p.guestOf === a.id), 2000));
+    const guest = a.roster.list.find(p => p.guestOf === a.id);
+    a.send({t: 'in2', k: P.IN.RIGHT});
+    await sleep(500);
+    const gf = last.f.find(f => f[0] === guest.id);
+    check('its own keys move it (in2)', gf && gf[3] > 100);
+    a.send({t: 'in2', k: 0});
+    a.send({t: 'console', do: 'start'});
+    await until(() => last.scene === 'match' && last.ph === 'fight', 9000);
+    check('the match has humans, the guest and 2 bots', last.f.filter(f => f[0] !== 0).length === a.roster.list.length &&
+        a.roster.list.filter(p => p.bot).length === 2 && last.f.some(f => f[0] === guest.id));
+    check('Rumble with surprises off: the arena stays', last.twist === null);
+    a.send({t: 'lobby'});
+    await until(() => last.scene === 'lobby', 3000);
+    check('the bots are gone after the match, the guest stays', !a.roster.list.some(p => p.bot) &&
+        a.roster.list.some(p => p.guestOf === a.id));
+    a.send({t: 'local', on: false});
+    check('Local 2P off removes the guest', await until(() => !a.roster.list.some(p => p.guestOf === a.id), 2000));
+    a.send({t: 'settings', key: 'bots', value: 0}); a.send({t: 'settings', key: 'surprise', value: true});
+    a.send({t: 'settings', key: 'mode', value: 'koth'});
+    await sleep(200);
     // ---------------- Banger Shuffle: never the same mode or map twice running
     a.send({t: 'lobby'});
     await until(() => last.scene === 'lobby', 2000);

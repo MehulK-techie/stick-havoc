@@ -186,7 +186,7 @@ function run(w, frames, inputs) {
     const w = world('colosseum'); w.weapons = true; w.crateT = 0; const f = fighter(w, 1, 800);
     const ev = run(w, 1, {});
     check('a crate is dropped', ev.some(e => e.type === 'crate') && w.crates.length === 1);
-    const c = w.crates[0]; c.y = 700; c.x = 800;
+    const c = w.crates[0]; c.y = 700; c.x = 800; c.kind = 'bat';   // (1 in 8 drops is the golden Rage orb)
     const ev2 = run(w, 30, {});
     check('it lands and walking over it picks it up', ev2.some(e => e.type === 'pickup') && f.weapon && !w.crates.length);
 }
@@ -492,12 +492,20 @@ function run(w, frames, inputs) {
     const ev3 = run(w2, 3, i => ({1: {k: i === 0 ? P.IN.LIGHT | P.IN.HEAVY : 0}}));
     check('once a round', !ev3.some(e => e.type === 'rageStart'));
 }
-{   // Overdrive (the smaller team): a quarter off every blow, and the Rage Art from the start
+{   // Overdrive (the smaller team): harder to knock about; the Rage meter fills 25 % faster
     const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 750); a.face = 1;
-    b.overdrive = true;
+    b.kbResist = 0.85; b.rageGain = 1.25;
+    const w2 = world('colosseum'); const a2 = fighter(w2, 1, 700), b2 = fighter(w2, 2, 750); a2.face = 1;
     run(w, 6, i => ({1: {k: i === 0 ? P.IN.HEAVY : 0}}));
-    check('Overdrive takes 25 % less', b.hp === 100 - Math.round(P.MOVES.uppercut.dmg * 0.75));
-    check('and has the Rage Art at full health', P.raging(w, Object.assign({}, b, {hp: 100})));
+    run(w2, 6, i => ({1: {k: i === 0 ? P.IN.HEAVY : 0}}));
+    check('Overdrive: a launch is 15 % shorter', Math.abs(b.vx) < Math.abs(b2.vx) * 0.9 || b.vx === 0 && b2.vx === 0 ||
+        b.x - 750 < (b2.x - 750) * 0.95);
+    check('and the Rage meter fills 25 % faster', Math.abs(b.rage - b2.rage * 1.25) < 0.01 && b.rage > 0);
+    const w3 = world('colosseum'); const f3 = fighter(w3, 1, 800);
+    check('Rage: not ready at full health with an empty meter, ready once the meter is full', !P.raging(w3, f3) &&
+        (f3.rage = 100, P.raging(w3, f3)));
+    f3.rage = 0; f3.hp = 20;
+    check('and ready under 25 %', P.raging(w3, f3));
 }
 {   // Team Brawl: no friendly fire
     const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 750); a.face = 1;
@@ -514,6 +522,97 @@ function run(w, frames, inputs) {
     const w2 = world('colosseum'); w2.chrono = {phase: 'matrix', t: 6}; const t0 = w2.time;
     run(w2, 30, {});
     check('the matrix phase runs the clock at 0.45x', Math.abs(w2.time - t0 - 0.45) < 0.01);
+}
+{   // Magma Shuffle: half the tiles go lava on the beat, at least three stay safe, a warning comes first
+    const w = world('magmashuffle'); w.hold = false;
+    const cells = w.plats.filter(p => p.tile);
+    check('nine tiles', cells.length === 9);
+    let warned = false, lavaMax = 0, safeMin = 9, ok = true;
+    for (let i = 0; i < 30 * 21; i++) {
+        const ev = run(w, 1, {});
+        if (ev.some(e => e.type === 'heatWarn')) {
+            warned = true;
+            ok = ok && cells.some(p => p.heat === 1);
+        }
+        lavaMax = Math.max(lavaMax, cells.filter(p => p.heat === 2).length);
+        safeMin = Math.min(safeMin, cells.filter(p => p.heat !== 2).length);
+    }
+    check('it warns first (amber), then 4 of 9 turn lava', warned && ok && lavaMax === 4);
+    check('at least 3 platforms are always safe', safeMin >= 5);
+    const w2 = world('magmashuffle'); const f = fighter(w2, 1, 800, 440);
+    w2.plats[5].heat = 2;
+    run(w2, 1, {});
+    check('standing on lava burns and launches you', f.vy < -1000 && f.hp < 100);
+    const w3 = world('magmashuffle'); w3.hold = true; run(w3, 30 * 6, {});
+    check('nothing shuffles during the countdown', w3.plats.every(p => !p.heat));
+}
+{   // Kinetic Foundry: conveyors carry you, the pinball pillar throws you back, the side wall regrows
+    const w = world('kinetic'); const f = fighter(w, 1, 200, 820); f.plat = w.plats[0];
+    run(w, 1, {});
+    const x0 = f.x;
+    run(w, 30, {});
+    check('a conveyor carries a standing fighter (150 px/s)', Math.abs(f.x - x0 - 150) < 12);
+    const g = fighter(w, 2, 700, 820); g.vx = 980; g.dashT = 0.2; g.st = 'dash';
+    const ev = run(w, 8, {2: {k: P.IN.RIGHT}});
+    check('slammed into the bumper pillar, you ricochet back', ev.some(e => e.type === 'bumper') && g.vx < 0 && g.x < 765);
+    const wall = w.plats.find(p => p.solid && !p.bumper);
+    wall.alive = false; wall.respawn = 0.1;
+    run(w, 10, {});
+    check('a broken side wall regrows after its blueprint time', wall.alive && wall.respawnAfter === 6);
+}
+{   // Fracture Sanctum: stand 1.5 s and the island breaks, 3 s later it forms again
+    const w = world('sanctum'); const isle = w.plats[0];
+    const f = fighter(w, 1, isle.x + 80, isle.y); f.plat = isle;
+    run(w, 30 * 2.6, {});
+    check('an island breaks after 1.5 s standing on it', !isle.alive);
+    run(w, 30 * 3.4, {});
+    check('and forms again 3 s later', isle.alive);
+    const w2 = world('sanctum'); w2.hold = true; const g = fighter(w2, 1, w2.plats[0].x + 80, w2.plats[0].y);
+    run(w2, 30 * 3, {});
+    check('nothing crumbles during the countdown', w2.plats.every(p => p.alive && !p.breaking));
+}
+{   // low gravity: wall-spamming decays, then slides you down; landing resets it
+    const w = world('asteroid'); const f = fighter(w, 1, 24, 500); f.ground = false; f.st = 'air';
+    const ups = [];
+    for (let n = 0; n < 3; n++) {
+        f.x = 21; f.vx = -400; f.y = 300;
+        run(w, 1, {});
+        ups.push(f.vy);
+    }
+    check('1st touch throws up less than a fresh bumper, 2nd less again, 3rd slides down',
+        ups[0] > -560 && ups[1] > ups[0] && ups[2] >= 200);
+    check('landing resets the count', (() => { const g = fighter(w, 2, 800, 500); g.wallHits = 2; g.ground = false; g.vy = 300;
+        run(w, 40, {}); return g.wallHits === 0; })());
+}
+{   // the ceiling repulsor, and crates: inset 48 px, on flat ground only, never on lava
+    const w = world('reactor'); const f = fighter(w, 1, 800, 120); f.ground = false; f.st = 'air'; f.vy = -900;
+    run(w, 1, {});
+    check('near the top, a repulsor pushes you down', f.vy >= 240);
+    let bad = 0;
+    for (let n = 0; n < 200; n++) {
+        const k = world('colosseum'); k.weapons = true; k.crateT = 0; run(k, 1, {});
+        const c = k.crates[0];
+        if (!c) { bad++; continue; }
+        const under = k.plats.filter(p => !p.solid && c.x >= p.x && c.x <= p.x + p.w);
+        if (!under.length || under.some(p => c.x < p.x + 48 || c.x > p.x + p.w - 48)) bad++;
+    }
+    check('200 crates: all 48 px in from an edge, none on a pillar', bad === 0);
+    const v = world('colosseum'); v.weapons = true; v.crateEvery = 4; v.crateT = 0;
+    run(v, 1, {});
+    check('Volatile Crates drop on a 4 s beat', v.crateT <= 4 && v.crateT > 3.5);
+    const o = world('colosseum'); const h = fighter(o, 1, 800); o.crates.push({x: 800, y: 800, kind: 'rage', landed: true, life: 20});
+    run(o, 2, {});
+    check('the golden orb fills the Rage meter', h.rage === 100 && !o.crates.length);
+}
+{   // Pinball Havoc: a node fires you off it
+    const w = world('colosseum'); w.nodes = [{x: 800, y: 700, r: 30}]; const f = fighter(w, 1, 830, 760);
+    const ev = run(w, 2, {});
+    check('a bumper node throws you away from it', ev.some(e => e.type === 'bumper') && Math.hypot(f.vx, f.vy) > 700);
+}
+{   // Rage input: R (the RAGE bit) works like J + K
+    const w = world('colosseum'); const a = fighter(w, 1, 700), b = fighter(w, 2, 830); a.face = 1; a.rage = 100;
+    const ev = run(w, 14, i => ({1: {k: i === 0 ? P.IN.RAGE : 0}}));
+    check('the Rage key fires the Rage Art with a full meter', ev.some(e => e.type === 'rageStart') && a.rageUsed);
 }
 console.log(failures ? `\n${failures} failed` : '\nall passed');
 process.exit(failures ? 1 : 0);

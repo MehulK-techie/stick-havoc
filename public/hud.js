@@ -272,12 +272,15 @@ const Hud = (() => {
     const LABELS = {
         mode: ['Game mode', {koth: 'King of the Hill', rumble: 'Royal Rumble', bomb: 'Bomb Tag', lava: 'Floor Is Lava',
             team: 'Team Brawl', chrono: 'Chrono Shift', random: 'Random', shuffle: 'Banger Shuffle'}],
-        target: ['Match', {3: 'First to 3', 5: 'First to 5', 7: 'First to 7'}],
+        target: ['Series', {3: 'First to 3', 5: 'First to 5', 7: 'First to 7'}],
         timer: ['Round timer', {45: '45 s', 60: '60 s', 90: '90 s', 0: '∞'}],
         weapons: ['Weapons', {true: 'On', false: 'Off'}],
         limit: ['Player limit', null],
         map: ['Map', null],
+        surprise: ['Surprises', {true: 'On', false: 'Off'}],
     };
+    // the host's dock, in three groups
+    const GROUPS = [['Arena', ['mode', 'map', 'target']], ['Rules', ['timer', 'weapons', 'limit', 'surprise']]];
     let choices = null, settingsHost = false, settingsSel = null, settingsAlone = false;
     const isAlone = isHost => !!(isHost && typeof Lobby !== 'undefined' && Lobby.state.ready === 1);
 
@@ -322,15 +325,68 @@ const Hud = (() => {
         $('sStart').classList.toggle('hidden', !isHost);
         const rows = $('sRows');
         rows.textContent = '';
-        for (const [key, [title, names]] of Object.entries(LABELS)) {
-            const nameOf = value => names ? names[value] : key === 'map' ? (value === 'random' ? 'Random' :
-                Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
-            // (Banger Shuffle deals the map with the mode, every round: the map row steps aside)
-            const shuffled = key === 'map' && sel.mode === 'shuffle';
-            const row = optionRow(shuffled ? 'Map · dealt by Banger Shuffle' : title, choices[key], nameOf,
-                shuffled ? null : sel[key], !isHost || shuffled, value => send({t: 'settings', key, value}));
-            rows.appendChild(row);
+        const group = title => {
+            const g = document.createElement('section');
+            g.className = 'group';
+            const h = document.createElement('div');
+            h.className = 'gtitle';
+            h.textContent = title;
+            g.appendChild(h);
+            rows.appendChild(g);
+            return g;
+        };
+        // 1. Banger Shuffle: one switch, a fresh mode and map every round
+        const shuffle = group('Banger Shuffle');
+        const big = document.createElement('button');
+        big.className = 'bigsw';
+        big.classList.toggle('on', sel.mode === 'shuffle');
+        big.disabled = !isHost;
+        big.textContent = sel.mode === 'shuffle' ? '🎲 Banger Shuffle: ON' : '🎲 Banger Shuffle: OFF';
+        big.title = 'A fresh mode and map together, every round';
+        big.addEventListener('click', () => {
+            send({t: 'settings', key: 'mode', value: sel.mode === 'shuffle' ? 'koth' : 'shuffle'});
+            Sfx.play('ui');
+        });
+        shuffle.appendChild(big);
+        // 2. the selectors, apart: mode, map, series; then the rules
+        for (const [title, keys] of GROUPS) {
+            const g = group(title);
+            for (const key of keys) {
+                const [label, names] = LABELS[key];
+                const values = key === 'mode' ? choices.mode.filter(v => v !== 'shuffle') : choices[key];
+                const nameOf = value => names ? names[value] : key === 'map' ? (value === 'random' ? 'Random' :
+                    Physics.MAPS[value].name.replace(/^The /, '')) : String(value);
+                const dealt = key === 'map' && sel.mode === 'shuffle';      // (Banger Shuffle deals the map too)
+                g.appendChild(optionRow(dealt ? 'Map · dealt by Banger Shuffle' : label, values, nameOf,
+                    dealt || (key === 'mode' && sel.mode === 'shuffle') ? null : sel[key], !isHost || dealt,
+                    value => send({t: 'settings', key, value})));
+            }
         }
+        // 3. bots, and (the button below) start
+        const botBox = group('Bots');
+        const row = document.createElement('div');
+        row.className = 'row';
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = 'Computer fighters';
+        const stepper = document.createElement('div');
+        stepper.className = 'stepper';
+        const max = choices.bots[choices.bots.length - 1], count = sel.bots || 0;
+        const step = (text, delta, off) => {
+            const b = document.createElement('button');
+            b.textContent = text;
+            b.disabled = !isHost || off;
+            b.addEventListener('click', () => {
+                send({t: 'settings', key: 'bots', value: count + delta});
+                Sfx.play('ui');
+            });
+            return b;
+        };
+        const num = document.createElement('b');
+        num.textContent = String(count);
+        stepper.append(step('−', -1, count <= 0), num, step('+', 1, count >= max));
+        row.append(label, stepper);
+        botBox.appendChild(row);
         $('sSolo').classList.toggle('hidden', !isHost);
         settingsAlone = isAlone(isHost);
         if (isSoloOpen())
@@ -660,6 +716,10 @@ const Hud = (() => {
         init(sender) { send = sender; },
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
         openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo, isControlsOpen, openControls,
-        openSolo, closeSolo, isSoloOpen, setSandboxBots: b => { sandboxBots = b; }, isFeedbackOpen, closeFeedback, feedbackAnswer, openMenu, closeMenu, isMenuOpen,
+        openSolo, closeSolo, isSoloOpen,
+        setLocal(on) {
+            $('localBtn').classList.toggle('on', on);
+            $('localBtn').querySelector('.txt').textContent = on ? 'Local 2P: ON' : 'Local 2P';
+        }, setSandboxBots: b => { sandboxBots = b; }, isFeedbackOpen, closeFeedback, feedbackAnswer, openMenu, closeMenu, isMenuOpen,
     };
 })();

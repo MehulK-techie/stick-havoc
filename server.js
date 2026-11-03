@@ -76,9 +76,11 @@ const wss = new WebSocketServer({server, maxPayload: 8192});   // (room for a 10
 let nextId = 1;
 const players = new Map();      // id -> {id, ws, name, color, gear, wins, joined, input, bot}
 // the room's settings: the host changes them at the console
-const sel = {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: MAX_PLAYERS};
+const sel = {mode: 'koth', map: 'rooftops', target: 5, timer: 0, weapons: true, limit: MAX_PLAYERS, bots: 0,
+    surprise: true};
 const CHOICES = {mode: ['koth', 'rumble', 'bomb', 'lava', 'team', 'chrono', 'random', 'shuffle'], map: [...P.ARENAS, 'random'],
-    target: [3, 5, 7], timer: [45, 60, 90, 0], weapons: [true, false],
+    target: [3, 5, 7], timer: [45, 60, 90, 0], weapons: [true, false], bots: [0, 1, 2, 3, 4, 5, 6, 7],
+    surprise: [true, false],
     limit: Array.from({length: MAX_PLAYERS - 1}, (_, i) => i + 2)};
 // Banger Shuffle: one setting that deals a fresh mode and map together every round, weighted, never the last
 // round's mode or map again and never a pairing from the last 2 rounds
@@ -134,7 +136,7 @@ function broadcast(msg) {
 function roster() {
     broadcast({type: 'roster', host: hostId(),
         list: [...players.values()].map(p => ({id: p.id, name: p.name, color: p.color, gear: p.gear,
-            ghost: !!p.ghost, spar: !!p.spar,
+            ghost: !!p.ghost, spar: !!p.spar, guestOf: p.guestOf || null,
             wins: match ? (match.roundWins.get(p.id) || 0) : 0, bot: !!p.bot}))});
 }
 
@@ -159,7 +161,7 @@ function addBot(style, name) {
 
 // alone in King of the Hill, you spar with the training bot until a second person is in
 function ensureBot() {
-    if (match && match.sandbox)              // (the sandbox brought its own)
+    if (match && (match.sandbox || match.botsSel))   // (the sandbox, or the host's Bots setting, brought its own)
         return;
     const bots = [...players.values()].filter(p => p.bot && p.bot.style === 'training');
     const want = scene === 'match' && match.mode === 'koth' && humans().length === 1;
@@ -174,6 +176,36 @@ function ensureBot() {
 
 // ---------------------------------------------------------------- matches
 const pick = list => list[Math.floor(Math.random() * list.length)];
+const shuffled = list => list.map(v => [Math.random(), v]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+
+// spawn points come in mirrored pairs: deal the pairs in a new order every round, and flip each, so the
+// first two fighters always start across from each other but never on the same spot twice running
+function spawnOrder(spots) {
+    const pairs = [];
+    for (let i = 0; i < spots.length; i += 2)
+        pairs.push(spots.slice(i, i + 2));
+    return shuffled(pairs).flatMap(pr => Math.random() < 0.5 ? pr : pr.slice().reverse());
+}
+
+// a surprise for every round after the first
+const TWISTS = {lava: 'SHUFFLING LAVA', crates: 'VOLATILE CRATES', overcharge: 'OVERCHARGE', pinball: 'PINBALL HAVOC'};
+function rollTwist(m) {
+    const w = m.world;
+    const key = pick(Object.keys(TWISTS).filter(k => k !== m.twist && (k !== 'lava' || !P.MAPS[m.map].shuffle)));
+    m.twist = key;
+    if (key === 'lava') {
+        w.shuffle = {t: 4, every: 4, warn: 1.2, next: null};
+    } else if (key === 'crates') {
+        Object.assign(w, {weapons: true, crateEvery: 4, crateT: 2, crateKb: 1.4});
+    } else if (key === 'overcharge') {
+        Object.assign(w, {speedMul: 1.3, rageMul: 2});
+    } else {
+        w.nodes = [{x: 800, y: 520, r: 38}, {x: 460, y: 400, r: 30}, {x: 1140, y: 400, r: 30}];
+    }
+    m.twistEvent = {type: 'twist', key, name: TWISTS[key]};
+}
+
+const BOT_POOL = ['training', 'brawler', 'acrobat', 'rookie', 'ninja'];
 
 function weighted(weights) {
     const total = Object.values(weights).reduce((a, b) => a + b, 0);
@@ -223,9 +255,17 @@ function newMatch(mode, map, extra) {
 function startMatch(picked) {
     const ids = humans().map(p => p.id);
     const {mode, map} = picked || resolvePick();
-    match = newMatch(mode, map, {shuffle: sel.mode === 'shuffle'});
+    match = newMatch(mode, map, {shuffle: sel.mode === 'shuffle', surprise: sel.surprise && mode !== 'lava'});
+    // the host's Bots setting: that many computer fighters, up to the room's player limit
+    const want = Math.max(0, Math.min(sel.bots, Math.min(MAX_PLAYERS, sel.limit) - humans().length));
+    const botIds = [];
+    for (let i = 0; i < want; i++) {
+        const style = BOT_POOL[i % BOT_POOL.length], n = botIds.filter(b => players.get(b).bot.style === style).length;
+        botIds.push(addBot(style, n ? `${Bot.STYLES[style].name} ${n + 1}` : null));
+    }
+    match.botsSel = want > 0;
     if (match.mode === 'koth')
-        match.queue = ids.slice();
+        match.queue = ids.concat(botIds);
     scene = 'match';
     ensureBot();
     startRound();
@@ -266,6 +306,12 @@ function startRound() {
             m.queue = [...players.keys()];
         }
         pendingEvents.push({type: 'match', mode: m.mode, map: m.map, name: P.MAPS[m.map].name, shuffle: true});
+    } else if (m.surprise && !m.sandbox && !m.arcade && m.round >= 1) {
+        // a series never replays the same stage: a different arena every round (not one of the last two)
+        const fresh = P.ARENAS.filter(a => a !== m.map && !history.some(h => h.map === a));
+        m.map = pick(fresh.length ? fresh : P.ARENAS.filter(a => a !== m.map));
+        remember(m.mode, m.map);
+        pendingEvents.push({type: 'match', mode: m.mode, map: m.map, name: P.MAPS[m.map].name, rotate: true});
     }
     const keep = m.world && m.world.hazard ? {hazard: m.world.hazard, hazardT: m.world.hazardT} : {};
     m.world = Object.assign(P.createWorld(m.map), keep);
@@ -276,6 +322,7 @@ function startRound() {
     m.round++;
     m.clock = 0;
     m.winner = null;
+    m.predict = new Map();
     if (m.mode === 'arcade') {
         m.active = [m.arcade.player, m.arcade.bot].filter(id => players.has(id));
         m.queue = humans().map(p => p.id).filter(id => id !== m.arcade.player);
@@ -288,7 +335,7 @@ function startRound() {
         m.active = [...players.keys()];
         m.queue = [];
     }
-    const spots = P.MAPS[m.map].spawns;
+    const spots = spawnOrder(P.MAPS[m.map].spawns);
     m.active = m.active.filter(id => players.has(id));     // (someone may have just left)
     m.active.forEach((id, i) => {
         const p = players.get(id);
@@ -301,6 +348,9 @@ function startRound() {
     if (m.mode === 'team')
         dealTeams(m);
     m.world.chrono = m.mode === 'chrono' ? {phase: 'normal', t: P.CHRONO.normal.secs} : null;
+    m.twist = null;
+    if (m.surprise && m.round >= 2 && ['koth', 'rumble', 'team'].includes(m.mode))
+        rollTwist(m);
     // match point for both of the two in the ring: the climax clash comes in at half health
     // who would clinch the match by winning this round: only their final blow gets the K.O. cinematic
     // (the arcade's rounds each decide a stage: every one does)
@@ -308,8 +358,13 @@ function startRound() {
     m.world.matchPoint = m.active.length === 2 && m.mode !== 'bomb' &&
         m.active.every(id => (m.roundWins.get(id) || 0) >= m.target - 1);
     setPhase(m.active.length >= 2 ? 'countdown' : 'waiting');
-    if (m.phase === 'countdown')
+    if (m.phase === 'countdown') {
         pendingEvents.push({type: 'getReady', round: m.round});
+        if (m.twistEvent) {
+            pendingEvents.push(m.twistEvent);
+            m.twistEvent = null;
+        }
+    }
     roster();
 }
 
@@ -324,9 +379,17 @@ function dealTeams(m) {
     const count = side => m.active.filter(id => m.teams.get(id) === side).length;
     const red = count('red'), blue = count('blue');
     const under = red < blue ? 'red' : blue < red ? 'blue' : null;
+    // the smaller side: +30 % max health for each teammate it's short, 25 % faster Rage, 15 % harder to knock about
+    const missing = Math.abs(red - blue);
     for (const f of m.world.fighters) {
         f.team = m.teams.get(f.id);
         f.overdrive = !!under && f.team === under;
+        if (f.overdrive) {
+            f.maxHp = Math.round(P.C.HP * (1 + 0.3 * missing));
+            f.hp = f.maxHp;
+            f.rageGain = 1.25;
+            f.kbResist = 0.85;
+        }
     }
     if (under)
         pendingEvents.push({type: 'overdrive', team: under});
@@ -355,7 +418,7 @@ function endRound(forced) {
     if (m.winner)
         m.roundWins.set(m.winner, (m.roundWins.get(m.winner) || 0) + 1);
     const champ = m.world.fighters.find(f => f.id === m.winner);
-    if (champ && champ.hp >= P.C.HP && m.mode !== 'bomb')      // not a scratch on them
+    if (champ && champ.hp >= (champ.maxHp || P.C.HP) && m.mode !== 'bomb')      // not a scratch on them
         pendingEvents.push({type: 'callout', x: Math.round(champ.x), y: Math.round(champ.y - 130), text: 'PERFECT!'});
     if (m.mode === 'koth') {   // the loser goes to the back of the line; the winner stays
         const losers = m.active.filter(id => id !== m.winner);
@@ -364,6 +427,11 @@ function endRound(forced) {
     }
     if (m.winner && m.roundWins.get(m.winner) >= m.target)
         m.champion = m.winner;
+    if (m.predict && m.predict.size && m.winner) {     // the spectators' calls on the last two
+        const right = [...m.predict].filter(([, pick_]) => pick_ === m.winner).map(([id]) => (players.get(id) || {}).name)
+            .filter(Boolean);
+        pendingEvents.push({type: 'predictResult', winner: m.winner, names: right, calls: m.predict.size});
+    }
     if (m.shuffle && !m.champion)
         m.reshuffle = true;
     pendingEvents.push({type: 'roundEnd', winner: m.winner, champion: m.champion, round: m.round, team,
@@ -454,8 +522,15 @@ function championStats(m) {
     const wins = m.roundWins.get(m.champion) || (m.mode === 'arcade' ? m.arcade.stage : 0);
     const others = [...m.roundWins].filter(([id]) => id !== m.champion).map(([, n]) => n);
     const finisher = m.finisher && m.finisher.by === m.champion ? MOVE_NAMES[m.finisher.kind] || 'Knockout' : 'Knockout';
-    return {rounds: `${wins}-${others.length ? Math.max(...others) : 0}`, combo: m.bestCombo.get(m.champion) || 1,
+    const stats = {rounds: `${wins}-${others.length ? Math.max(...others) : 0}`, combo: m.bestCombo.get(m.champion) || 1,
         finisher};
+    if (m.mode === 'team' && m.teams) {              // the whole winning side takes the podium
+        const team = m.teams.get(m.champion);
+        stats.squad = {team, names: [...m.teams].filter(([id, t]) => t === team && players.has(id))
+            .map(([id]) => players.get(id).name), ids: [...m.teams].filter(([id, t]) => t === team && players.has(id))
+            .map(([id]) => id)};
+    }
+    return stats;
 }
 
 function backToLobby() {
@@ -643,6 +718,7 @@ function matchTick(dt) {
     for (const p of players.values())
         inputs[p.id] = m.phase === 'fight' ? p.input : {k: 0, aim: null};
     w.events = [];
+    w.hold = m.phase !== 'fight';         // (islands don't crumble and tiles don't shuffle during the countdown)
     P.step(w, inputs, dt);
     for (const e of w.events) {           // for the winner's card: the best combo, the finishing blow
         if (e.type === 'combo')
@@ -696,7 +772,12 @@ function snapshot() {
         bomb: bomb ? {id: bomb.id, t: r1(bomb.t)} : null,
         beam: w.beam ? {ph: w.beam.phase, x: Math.round(w.beam.x), n: r1(w.beam.next)} : null,
         pl: w.plats.map(p => [p.alive ? 1 : 0, p.breaking > 0 ? 1 : 0, p.load > 0 ? r1(p.load / (p.crumbleAfter || 1.6)) : 0,
-            p.solid ? p.hp : 0, Math.round(p.x), Math.round(p.y)]),
+            p.solid ? p.hp : 0, Math.round(p.x), Math.round(p.y), p.heat || 0]),
+        twist: m && m.twist ? TWISTS[m.twist] : null, nodes: w.nodes ? w.nodes.map(n => [n.x, n.y, n.r]) : null,
+        out: m && m.world ? m.world.fighters.filter(f => !f.dummy && (f.st === 'ko' || f.st === 'gone')).map(f => f.id) : [],
+        pred: m && m.phase === 'fight' && m.world && m.world.fighters.some(f => f.st === 'ko' || f.st === 'gone') &&
+            m.world.fighters.filter(f => f.st !== 'ko' && f.st !== 'gone' && !f.dummy).length === 2 ?
+            m.world.fighters.filter(f => f.st !== 'ko' && f.st !== 'gone' && !f.dummy).map(f => f.id) : null,
         ball: w.ball ? [Math.round(w.ball.x), Math.round(w.ball.y)] : null,
         lavaY: w.lavaY !== null ? Math.round(w.lavaY) : null,
         tunnel: w.tunnel ? {x: w.tunnel.x === null ? null : Math.round(w.tunnel.x), warn: !!w.tunnel.warned} : null,
@@ -707,7 +788,8 @@ function snapshot() {
             f.inv > 0 ? 1 : 0, f.shield > 0 ? 1 : 0, r1(f.spin), f.ground ? 1 : 0,
             f.atk && f.atk.dir ? r1(f.atk.dir.y) : 0, f.weapon ? f.weapon.kind : 0, f.weapon ? f.weapon.uses : 0,
             f.ghost ? 1 : 0, f.climbStart !== undefined ? Math.round((w.time - f.climbStart) * 100) / 100 : -1,
-            f.team || 0, (P.raging(w, f) ? 1 : 0) | (f.overdrive ? 2 : 0)]),
+            f.team || 0, (P.raging(w, f) ? 1 : 0) | (f.overdrive ? 2 : 0), Math.round(f.maxHp || 100),
+            Math.round(f.rage || 0)]),
         chrono: w.chrono ? w.chrono.phase : null,
         goals: lobbyGoals, record: climbBoard[0] || null, board: climbBoard, ballOut: !!(w.ball && w.ball.goalT !== undefined),
         cr: w.crates.map(c => [Math.round(c.x), Math.round(c.y), c.kind, c.landed ? 1 : 0]),
@@ -726,7 +808,21 @@ function snapshot() {
 // ---------------------------------------------------------------- sockets
 const clean = s => String(s || '').replace(/[^\p{L}\p{N} _.\-!?]/gu, '').trim().slice(0, 16);
 
+// 👥 Local 2P: a second human fighter played from the same browser (its keys arrive as 'in2')
+function addGuest(owner) {
+    const id = nextId++;
+    const used = new Set(humans().map(p => p.color));
+    const color = COLOR_VALUES.find(c => !used.has(c)) || COLOR_VALUES[id % COLOR_VALUES.length];
+    const g = {id, ws: null, name: `${owner.name} 2`.slice(0, 16), color, gear: {hat: null, trail: 'ghost'},
+        joined: Date.now(), input: {k: 0, aim: null}, guestOf: owner.id};
+    players.set(id, g);
+    lobbySpawn(g);
+    roster();
+}
+
 function removePlayer(id) {
+    for (const g of [...players.values()].filter(o => o.guestOf === id))
+        removePlayer(g.id);
     players.delete(id);
     if (match && (match.arcade || match.sandbox) && (match.arcade || match.sandbox).player === id) {   // the solo player left
         backToLobby();
@@ -874,8 +970,28 @@ wss.on('connection', (ws, req) => {
             return;
         const isHost = id === hostId();
         if (m.t === 'in') {
-            me.input.k = (m.k | 0) & 1023;
+            me.input.k = (m.k | 0) & 2047;
             me.input.aim = typeof m.aim === 'number' && isFinite(m.aim) ? m.aim : null;
+        } else if (m.t === 'in2') {                       // the local second player's keys (same keyboard)
+            const g = [...players.values()].find(o => o.guestOf === id);
+            if (g) {
+                g.input.k = (m.k | 0) & 2047;
+                g.input.aim = null;
+            }
+        } else if (m.t === 'local' && scene === 'lobby') {   // 👥 Local 2P: a second fighter on this keyboard
+            const g = [...players.values()].find(o => o.guestOf === id);
+            if (m.on && !g && humans().length < Math.min(MAX_PLAYERS, sel.limit))
+                addGuest(me);
+            else if (!m.on && g)
+                removePlayer(g.id);
+        } else if (m.t === 'stamp' && match && match.phase === 'fight' && ['clutch', 'parry', 'calculated'].includes(m.s) &&
+            now - (me.lastStamp || 0) > 1200 && !match.world.fighters.some(f => f.id === id && f.st !== 'ko' && f.st !== 'gone')) {
+            me.lastStamp = now;                          // (only from the balcony: someone who's out of the round)
+            pendingEvents.push({type: 'stamp', id, s: m.s});
+        } else if (m.t === 'predict' && match && match.phase === 'fight') {
+            const standing = match.world.fighters.filter(f => f.st !== 'ko' && f.st !== 'gone');
+            if (standing.length === 2 && !standing.some(f => f.id === id) && standing.some(f => f.id === m.id))
+                match.predict.set(id, m.id);
         } else if (m.t === 'look') {
             applyLook(me, m);
         } else if (m.t === 'ghost' || m.t === 'spar') {

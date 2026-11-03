@@ -11,6 +11,10 @@
     let ws = null, myId = null, hostId = null, choices = null, scene = 'lobby';
     let colors = [];                    // [[name, hex]] from the server
     let sparring = false;               // practice against the bot, simulated in this browser (spar.js)
+    let localOn = false, guestId = null;    // 👥 Local 2P: a second fighter on this keyboard (its id)
+    const held2 = new Map();            // the second player's held keys
+    let outIds = [], predNow = null, myCall = null;   // who's out of the round (the balcony), the last two, my call
+    const stamps = [];                  // spectators' callout stamps [{id, s, t0}]
     let sandbox = false;                // a 1P sandbox match is on (Esc goes back to the lobby)
     let solo = false;                   // this browser's player is in a 1P match (sandbox or arcade): R restarts
     let serverNear = null;              // the station the server says you stand at (kept through sparring)
@@ -51,6 +55,16 @@
                 roster = new Map(m.list.map(p => [p.id, p]));
                 hostId = m.host;
                 Hud.setRoster(roster, myId);
+                const guest = [...roster.values()].find(p => p.guestOf === myId);
+                const wasOn = localOn;
+                guestId = guest ? guest.id : null;
+                localOn = !!guest;
+                if (localOn !== wasOn) {
+                    held2.clear();
+                    Hud.setLocal(localOn);
+                    Hud.toast(localOn ? 'Local 2P on. P1: W A S D · F attack · Space jump · G dash · R rage · T grab. ' +
+                        'P2: arrows · K attack · L jump · ; dash · O rage · \' grab' : 'Local 2P off', 7000);
+                }
             } else if (m.type === 'welcome') {
                 myId = m.id;
                 colors = m.colors;
@@ -92,6 +106,7 @@
             ws.send(JSON.stringify(m));
     }
     Hud.init(sendMsg);
+    document.getElementById('localBtn').addEventListener('click', () => sendMsg({t: 'local', on: !localOn}));
 
     // your look from last time (or ?name=), sent as soon as you arrive
     function restoreLook() {
@@ -106,6 +121,10 @@
 
     function onSnapshot(s) {
         sandbox = !!s.sandbox && s.scene === 'match';
+        outIds = s.out || [];
+        predNow = s.pred || null;
+        if (!predNow || s.ph !== 'fight')
+            myCall = null;
         solo = s.scene === 'match' && (sandbox || !!(s.arcade && s.arcade.player === myId));
         snaps.push({at: performance.now(), s});
         while (snaps.length > 8)
@@ -117,7 +136,10 @@
         }
         s.pl.forEach((p, i) => {
             if (plats[i]) {
+                if (!plats[i].alive && p[0])
+                    plats[i].born = clock;        // (an island forming again fades in)
                 plats[i].alive = !!p[0]; plats[i].breaking = p[1]; plats[i].load = p[2]; plats[i].hp = p[3];
+                plats[i].heat = p[6] || 0;
                 if (p[4] !== undefined) {         // (moving platforms move)
                     plats[i].x = p[4]; plats[i].y = p[5];
                 }
@@ -284,7 +306,13 @@
                 ring(ev.x, ev.y - 30, '#f8fafc');
                 Sfx.play('kick');
             }
-            if (ev.id === myId) {
+            if (ev.kind === 'rage') {
+                burst(ev.x, ev.y - 30, '#facc15', 40, 700);
+                ring(ev.x, ev.y - 30, '#fde68a');
+                Sfx.play('chime');
+                if (ev.id === myId)
+                    Hud.toast('RAGE meter full: J + K (or R in Local 2P) for the Rage Art');
+            } else if (ev.id === myId) {
                 Hud.toast(`${Weapons.KINDS[ev.kind].name}: J to use it, E to throw it`);
                 Touch.buzz(20);
             }
@@ -450,7 +478,26 @@
             break;
         case 'match':
             cam.z = 0.7; cam.y = H * 0.8;        // a sweep in to the new stage
-            Hud.toast(ev.shuffle ? `Banger Shuffle: ${MODES[ev.mode]} on ${ev.name}` : ev.name);
+            Hud.toast(ev.shuffle ? `Banger Shuffle: ${MODES[ev.mode]} on ${ev.name}` : ev.rotate ? `Next arena: ${ev.name}` : ev.name);
+            break;
+        case 'heatWarn':                          // Magma Shuffle: the next tiles are about to go
+            Sfx.play('hazard');
+            break;
+        case 'heat':
+            Sfx.play('sizzle');
+            cam.shake = Math.max(cam.shake, 5);
+            break;
+        case 'twist':                             // the round's surprise
+            cue(`TWIST · ${ev.name}`, '#a78bfa', 1.6, 54);
+            Hud.toast(`Round twist: ${ev.name}`, 4500);
+            Sfx.play('warp');
+            break;
+        case 'stamp':                             // from the balcony
+            stamps.push({id: ev.id, s: ev.s, t0: performance.now()});
+            Sfx.play('ui');
+            break;
+        case 'predictResult':
+            Hud.toast(ev.names.length ? `Called it: ${ev.names.join(', ')}` : `Nobody called it (${ev.calls} guesses)`, 4500);
             break;
         case 'rageStart':                         // the Rage Art's startup: a flash and a rising chime
             cam.flash = 0.6;
@@ -617,10 +664,16 @@
     let podiumFor = null;
     function showPodium(id, stats) {
         const p = info(id);
-        podiumFor = {id, p, t0: performance.now()};
-        $('pName').textContent = p.name;
-        $('pName').style.color = p.color;
-        $('pName').style.textShadow = `0 0 18px ${p.color}`;
+        const squad = stats && stats.squad;
+        podiumFor = {id, p, t0: performance.now(), squad: squad ? squad.ids.slice(0, 5) : null};
+        const tint = squad ? TEAM_COLORS[squad.team] : p.color;
+        $('pName').textContent = squad ? `VICTORY: ${squad.team.toUpperCase()} SQUAD — ${squad.names.join(' // ')}` : p.name;
+        $('pName').style.color = tint;
+        $('pName').style.fontSize = squad ? '18px' : '';
+        $('pName').style.textShadow = `0 0 18px ${tint}`;
+        const fig = $('podiumFig'), n = podiumFor.squad ? podiumFor.squad.length : 1;
+        fig.width = n > 1 ? Math.min(380, 110 * n + 40) : 220;
+        fig.style.width = `${fig.width}px`;
         $('pStats').innerHTML = stats ? `<span>Rounds <b>${stats.rounds}</b></span><span>Highest combo <b>${stats.combo} hits</b></span>` +
             `<span>Finishing move <b>${stats.finisher}</b></span>` : '';
         $('podium').classList.remove('hidden');
@@ -646,10 +699,14 @@
         const c = $('podiumFig'), g = c.getContext('2d');
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, c.width, c.height);
-        g.setTransform(1.5, 0, 0, 1.5, 110 - 1.5 * 100, 0);
         const t = (performance.now() - podiumFor.t0) / 1000;
-        drawRig(g, {x: 100, y: 128 + Math.abs(Math.sin(t * 3)) * -6, face: 1, st: 'victory', vx: 0, color: podiumFor.p.color,
-            gear: podiumFor.p.gear || {}}, t, {eyes: (podiumFor.p.gear || {}).eyes});
+        const ids = podiumFor.squad || [podiumFor.id], k = ids.length > 3 ? 0.95 : ids.length > 1 ? 1.2 : 1.5;
+        ids.forEach((id, i) => {                 // (the same pump for all of them: in step)
+            const q = info(id), cx = c.width / ids.length * (i + 0.5);
+            g.setTransform(k, 0, 0, k, cx - k * 100, 0);
+            drawRig(g, {x: 100, y: 128 + Math.abs(Math.sin(t * 3)) * -6, face: 1, st: 'victory', vx: 0, color: q.color,
+                gear: q.gear || {}}, t, {eyes: (q.gear || {}).eyes});
+        });
         const s = snaps.length && snaps[snaps.length - 1].s;
         if (s && s.ph === 'end')
             $('pCount').textContent = `Returning to lobby in ${Math.max(1, Math.ceil(7.5 - s.pt))}s...`;
@@ -682,6 +739,7 @@
                 spin: fa[13] + (fb[13] - fa[13]) * k, ground: fb[14], aimY: fb[15], dummy: fb[0] === 0,
                 name: p.name, color: p.color, gear: p.gear || {}, weapon: fb[16] || null, uses: fb[17], ghost: fb[18],
                 climb: fb[19] >= 0 ? fa[19] + (fb[19] - fa[19]) * k : -1,
+                maxHp: fb[22] || 100, rageM: fb[23] || 0,
                 team: fb[20] || null, rage: !!(fb[21] & 1), overdrive: !!(fb[21] & 2),
                 bomb: !!(b.s.bomb && b.s.bomb.id === fb[0]), bombT: b.s.bomb ? b.s.bomb.t : 0});
         }
@@ -770,12 +828,14 @@
         else
             drawBackdrop();
         drawPlatforms(v);
+        if (v && v.s.nodes)
+            drawNodes(v.s.nodes);
         if (v) {
             drawHazards(v.s);
             for (const [x, y] of v.an)
                 drawAnvil(x, y);
-            for (const [x, y, , landed] of v.cr)
-                Weapons.drawCrate(ctx, x, y, landed, clock);
+            for (const [x, y, kind, landed] of v.cr)
+                Weapons.drawCrate(ctx, x, y, landed, clock, kind === 'rage');
             if (v.s.ball && !v.s.ballOut)
                 drawBall(v.s.ball);
             if (v.s.tunnel)
@@ -805,8 +865,10 @@
         }
         if (cinema.on && performance.now() > cinema.until && !podiumFor)
             endCinema();
-        if (v && !lobby && !cinema.on)
+        if (v && !lobby && !cinema.on) {
             drawHud(v);
+            drawBalcony(v);
+        }
         if (cinema.on || cinema.t > 0) {            // the letterbox: 36 px bars sliding in and out
             cinema.t = Math.max(0, Math.min(1, cinema.t + (cinema.on ? dt : -dt) * 4));
             const bar = 36 * cinema.t;
@@ -865,6 +927,17 @@
         const reactorWarn = v && v.s.beam && v.s.beam.ph === 'warn' && Math.floor(clock * 6) % 2;
         for (const p of plats) {
             if (!p.alive) {
+                if (p.solid) {                           // a broken wall: its holographic blueprint, scanned back into being
+                    ctx.save();
+                    ctx.strokeStyle = `rgba(34, 211, 238, ${0.4 + 0.25 * Math.sin(clock * 5)})`;
+                    ctx.setLineDash([8, 6]);
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(p.x, p.y, p.w, p.h);
+                    const sy = p.y + ((clock * 0.8) % 1) * p.h;
+                    ctx.beginPath(); ctx.moveTo(p.x, sy); ctx.lineTo(p.x + p.w, sy); ctx.stroke();
+                    ctx.restore();
+                    continue;
+                }
                 ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
                 ctx.setLineDash([6, 8]);
                 ctx.lineWidth = 1;
@@ -873,6 +946,22 @@
                 continue;
             }
             const jx = p.breaking ? (Math.random() - 0.5) * 5 : 0;
+            if (p.bumper) {                              // the pinball pillar: violet, banded, humming
+                ctx.save();
+                ctx.shadowColor = '#a78bfa';
+                ctx.shadowBlur = 14 + Math.sin(clock * 6) * 5;
+                ctx.fillStyle = '#2e1065';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.strokeStyle = '#a78bfa';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(p.x, p.y, p.w, p.h);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(167, 139, 250, 0.35)';
+                for (let y = p.y + 14; y < p.y + p.h - 10; y += 34)
+                    ctx.fillRect(p.x + 6, y, p.w - 12, 10);
+                ctx.restore();
+                continue;
+            }
             if (p.solid) {                               // a stone pillar, cracking as it's hit
                 ctx.fillStyle = '#1e293b';
                 ctx.fillRect(p.x, p.y, p.w, p.h);
@@ -889,9 +978,18 @@
                 }
                 continue;
             }
-            const col = p.breaking ? '#f43f5e' : p.crumble ? '#fb923c' : p.floor ? '#22d3ee' : '#94a3b8';
-            ctx.fillStyle = '#111827';
+            // heat: 0 safe basalt, 1 warning (pulsing amber, rising sparks), 2 lava (molten, burns)
+            const heat = p.heat || 0;
+            const born = p.born === undefined ? 1 : Math.min(1, (clock - p.born) / 0.6);
+            if (born < 1)
+                ctx.globalAlpha = born;
+            const col = heat === 2 ? '#fb923c' : heat === 1 ? (Math.floor(clock * 8) % 2 ? '#fbbf24' : '#f59e0b') :
+                p.breaking ? '#f43f5e' : p.timber ? '#d97706' : p.crumble ? '#fb923c' : p.floor ? '#22d3ee' : '#94a3b8';
+            ctx.fillStyle = heat === 2 ? '#7c2d12' : p.timber ? '#3b2a1a' : p.tile ? '#1f2937' : '#111827';
             ctx.fillRect(p.x + jx, p.y, p.w, p.floor ? 100 : p.h);
+            if (heat && Math.random() < (heat === 2 ? 0.18 : 0.3))
+                particles.push({k: 'spark', x: p.x + Math.random() * p.w, y: p.y - 2, vx: (Math.random() - 0.5) * 40,
+                    vy: -120 - Math.random() * 90, life: 0, max: 0.6, color: heat === 2 ? '#fb923c' : '#fbbf24', size: 2});
             if (p.floor && reactorWarn) {               // the reactor's warning stripes over the floor
                 ctx.save();
                 ctx.beginPath(); ctx.rect(0, p.y - 130, W, 130); ctx.clip();
@@ -904,18 +1002,91 @@
             }
             ctx.save();
             ctx.shadowColor = col;
-            ctx.shadowBlur = p.floor ? 10 : 6;
+            ctx.shadowBlur = heat === 2 ? 16 : p.floor ? 10 : 6;
             ctx.strokeStyle = col;
-            ctx.lineWidth = p.floor ? 2 : 3;
+            ctx.lineWidth = heat === 1 ? 4 : p.floor ? 2 : 3;
             ctx.beginPath();
             ctx.moveTo(p.x + jx, p.y); ctx.lineTo(p.x + p.w + jx, p.y);
             ctx.stroke();
             ctx.restore();
+            if (p.belt) {                               // a conveyor: chevrons sliding along it
+                ctx.save();
+                ctx.beginPath(); ctx.rect(p.x, p.y - 12, p.w, 12); ctx.clip();
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.6)';
+                ctx.lineWidth = 2;
+                const dir = Math.sign(p.belt), off = (clock * Math.abs(p.belt) * 0.6) % 36;
+                for (let x = p.x - 36; x < p.x + p.w + 36; x += 36) {
+                    const cx = x + (dir > 0 ? off : 36 - off);
+                    ctx.beginPath(); ctx.moveTo(cx, p.y - 9); ctx.lineTo(cx + 7 * dir, p.y - 5); ctx.lineTo(cx, p.y - 1); ctx.stroke();
+                }
+                ctx.restore();
+            }
             if (p.crumble && p.load > 0) {              // how close the bridge is to giving way
                 ctx.fillStyle = 'rgba(251, 146, 60, 0.5)';
                 ctx.fillRect(p.x, p.y + p.h - 3, p.w * Math.min(1, p.load), 3);
             }
+            ctx.globalAlpha = 1;
         }
+    }
+
+    // pinball bumpers (the Pinball Havoc twist)
+    function drawNodes(nodes) {
+        for (const [x, y, r] of nodes) {
+            ctx.save();
+            ctx.shadowColor = '#a78bfa';
+            ctx.shadowBlur = 16 + Math.sin(clock * 7) * 6;
+            ctx.fillStyle = '#2e1065';
+            ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#a78bfa';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.beginPath(); ctx.arc(x, y, r * 0.45, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    // the balcony: whoever's out of the round watches from a strip at the top, 55 px apart, outside the fight
+    function drawBalcony(v) {
+        const s = v.s;
+        const now = performance.now();
+        while (stamps.length && now - stamps[0].t0 > 2400)
+            stamps.shift();
+        if (s.ph !== 'fight' || !outIds.length)
+            return;
+        const slot = 55, y = 100, x0 = cw / 2 - (outIds.length - 1) * slot / 2;
+        ctx.save();
+        ctx.textAlign = 'center';
+        outIds.forEach((id, i) => {
+            const p = info(id), x = x0 + i * slot;
+            ctx.save();
+            ctx.translate(x, y + 34);
+            ctx.scale(0.42, 0.42);
+            drawRig(ctx, {x: 0, y: 0, face: 1, st: 'idle', vx: 0, inv: 0, color: p.color, gear: p.gear || {}}, clock + i, {noGlow: true, alpha: 0.85});
+            ctx.restore();
+            ctx.font = '600 10px system-ui, sans-serif';
+            ctx.fillStyle = id === myId ? '#f1f5f9' : 'rgba(226, 232, 240, 0.6)';
+            ctx.fillText(p.name.slice(0, 9), x, y + 48);
+            for (const st of stamps.filter(q => q.id === id)) {
+                const age = (now - st.t0) / 2400;
+                ctx.globalAlpha = 1 - age * age;
+                ctx.font = '800 13px system-ui, sans-serif';
+                ctx.fillStyle = {clutch: '#facc15', parry: '#22d3ee', calculated: '#c4b5fd'}[st.s];
+                ctx.fillText(st.s.toUpperCase(), x, y - age * 14);
+                ctx.globalAlpha = 1;
+            }
+        });
+        if (outIds.includes(myId) || !fighterNow(myId)) {
+            ctx.font = '600 12px system-ui, sans-serif';
+            ctx.fillStyle = 'rgba(226, 232, 240, 0.75)';
+            ctx.fillText('You\'re on the balcony:  9 CLUTCH · 0 PARRY · - CALCULATED', cw / 2, y + 70);
+            if (predNow) {
+                const [a, b] = predNow;
+                ctx.fillStyle = '#facc15';
+                ctx.fillText(`Who wins?  [1] ${nameOf(a)}   [2] ${nameOf(b)}` +
+                    (myCall ? `   · you called ${nameOf(myCall)}` : ''), cw / 2, y + 88);
+            }
+        }
+        ctx.restore();
     }
 
     function drawBall([x, y]) {
@@ -1078,6 +1249,18 @@
         ctx.fillStyle = f.team ? TEAM_COLORS[f.team] : f.id === myId ? '#f1f5f9' : 'rgba(226, 232, 240, 0.7)';
         const ty = f.y - (gear.hat === 'kasa' || gear.hat === 'crown' ? 140 : 128) - (f.bomb ? 30 : 0) - (lifts.get(f.id) || 0);
         ctx.fillText(f.name, f.x, ty);
+        if (localOn && s.scene === 'match' && (f.id === myId || f.id === guestId)) {   // Local 2P: who's who
+            const tagCol = f.id === myId ? '#22d3ee' : '#f472b6';
+            ctx.font = '800 13px system-ui, sans-serif';
+            ctx.fillStyle = tagCol;
+            ctx.fillText(`▼ ${f.id === myId ? 'P1' : 'P2'}`, f.x, ty - 20);
+            ctx.strokeStyle = tagCol;
+            ctx.lineWidth = 2.5;
+            ctx.globalAlpha = 0.75;
+            ctx.beginPath(); ctx.ellipse(f.x, f.y + 2, 28, 7, 0, 0, Math.PI * 2); ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.font = '600 14px system-ui, sans-serif';
+        }
         if (isHost) {                                     // 👑 ROOM HOST, lit, over the name
             ctx.font = '800 11px system-ui, sans-serif';
             const w = ctx.measureText('👑 ROOM HOST').width + 14;
@@ -1112,7 +1295,7 @@
         }
         // more than two on the stage: a small health bar under every name (the bars across the top are for two)
         if (s.scene === 'match' && s.f.filter(o => o[0] !== 0).length > 2) {
-            const hp = Math.max(0, Math.min(100, f.hp)) / 100;
+            const hp = Math.max(0, Math.min(1, f.hp / (f.maxHp || 100)));
             ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
             rounded(ctx, f.x - 22, ty + 5, 44, 5, 3);
             ctx.fill();
@@ -1120,6 +1303,10 @@
                 ctx.fillStyle = hp > 0.5 ? '#4ade80' : hp >= 0.25 ? '#fbbf24' : '#f43f5e';
                 rounded(ctx, f.x - 22, ty + 5, Math.max(5, 44 * hp), 5, 3);
                 ctx.fill();
+            }
+            if (f.rageM > 0) {                        // the Rage meter under it; gold and lit when it's full
+                ctx.fillStyle = f.rageM >= 100 ? '#facc15' : 'rgba(250, 204, 21, 0.55)';
+                ctx.fillRect(f.x - 22, ty + 11, 44 * Math.min(1, f.rageM / 100), 2);
             }
             if (f.team) {                             // Team Brawl: the bar's border is the team's colour
                 ctx.strokeStyle = TEAM_COLORS[f.team];
@@ -1256,17 +1443,21 @@
                 const f = v.f.find(o => o.id === id);
                 const p = info(id);
                 const hp = f ? Math.max(0, f.hp) : 0;
+                const mhp = (f && f.maxHp) || 100;
                 const shown = shownHp.get(id) ?? hp;
                 shownHp.set(id, shown + (hp - shown) * 0.1);
                 const x = i === 0 ? cw / 2 - 36 - barW : cw / 2 + 36;
                 ctx.fillStyle = 'rgba(17, 24, 39, 0.9)';
                 ctx.fillRect(x - 2, y - 2, barW + 4, 14);
                 ctx.fillStyle = 'rgba(244, 63, 94, 0.5)';         // what was just lost, draining
-                const lag = shownHp.get(id) / 100 * barW;
+                const lag = Math.min(1, shownHp.get(id) / mhp) * barW;
                 ctx.fillRect(i === 0 ? x + barW - lag : x, y, lag, 10);
                 ctx.fillStyle = p.color;
-                const w = hp / 100 * barW;
+                const w = Math.min(1, hp / mhp) * barW;
                 ctx.fillRect(i === 0 ? x + barW - w : x, y, w, 10);
+                const rw = (f ? f.rageM : 0) / 100 * barW;      // the Rage meter, a thin gold line under it
+                ctx.fillStyle = f && f.rageM >= 100 ? '#facc15' : 'rgba(250, 204, 21, 0.5)';
+                ctx.fillRect(i === 0 ? x + barW - rw : x, y + 12, rw, 3);
                 ctx.font = font(600, 14);
                 ctx.textAlign = i === 0 ? 'right' : 'left';
                 ctx.fillStyle = '#e5e7eb';
@@ -1296,6 +1487,12 @@
             ctx.textAlign = 'center';
             ctx.fillStyle = s.bomb.t < 5 ? '#f43f5e' : '#facc15';
             ctx.fillText(`BOMB · ${nameOf(s.bomb.id)} · ${Math.max(0, s.bomb.t).toFixed(1)}s`, cw / 2, 30);
+        }
+        if (s.twist) {
+            ctx.font = font(700, 12);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#c4b5fd';
+            ctx.fillText(`⚡ ${s.twist}`, cw / 2, 50);
         }
         if (s.mode === 'arcade' && s.arcade) {
             ctx.font = font(700, 12);
@@ -1419,14 +1616,30 @@
         return k;
     }
 
+    // 👥 Local 2P: two fighters on one keyboard (F / K attack: with ↑ it launches, with ↓ it sweeps)
+    const LOCAL1 = {KeyA: IN.LEFT, KeyD: IN.RIGHT, KeyW: IN.UP, KeyS: IN.DOWN, KeyF: IN.LIGHT, Space: IN.JUMP,
+        KeyG: IN.DASH, KeyR: IN.RAGE, KeyT: IN.GRAB, KeyE: IN.USE};
+    const LOCAL2 = {ArrowLeft: IN.LEFT, ArrowRight: IN.RIGHT, ArrowUp: IN.UP, ArrowDown: IN.DOWN, KeyK: IN.LIGHT,
+        KeyL: IN.JUMP, Semicolon: IN.DASH, KeyO: IN.RAGE, Quote: IN.GRAB, Slash: IN.USE};
+    let sentK2 = -1;
+    const bits2 = () => [...held2.values()].reduce((k, b) => k | b, 0);
+
     function pushInput(force) {
-        const k = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() || Hud.isSoloOpen() ||
-            Hud.isFeedbackOpen() || Hud.isMenuOpen() ? 0 : bits();
+        const idle = Hud.isDrawerOpen() || Hud.isSettingsOpen() || Hud.isControlsOpen() || Hud.isSoloOpen() ||
+            Hud.isFeedbackOpen() || Hud.isMenuOpen();
+        const k = idle ? 0 : bits();
         if (sparring)
             return Spar.input(k, mouseBits ? aim : null);
         if (force || k !== sentK || aim !== sentAim) {
             sentK = k; sentAim = aim;
             sendMsg({t: 'in', k, aim: mouseBits ? aim : null});
+        }
+        if (localOn && guestId) {
+            const k2 = idle ? 0 : bits2();
+            if (force || k2 !== sentK2) {
+                sentK2 = k2;
+                sendMsg({t: 'in2', k: k2});
+            }
         }
     }
     setInterval(() => pushInput(true), 250);   // a heartbeat, in case a message was lost
@@ -1522,6 +1735,17 @@
             }
             return;
         }
+        if (localOn && !(scene === 'lobby' && e.code === 'KeyE')) {     // Local 2P: both players' keys
+            const b1 = LOCAL1[e.code], b2 = LOCAL2[e.code];
+            if (b1 || b2) {
+                e.preventDefault();
+                if (!e.repeat) {
+                    (b1 ? held : held2).set(e.code, b1 || b2);
+                    pushInput();
+                }
+                return;
+            }
+        }
         if (e.code === 'KeyP' && scene === 'lobby' && !e.repeat) {   // P: a quick spar with the practice bot
             startSpar();
             return;
@@ -1567,15 +1791,23 @@
         } else if (/^Digit[5-8]$/.test(e.code)) {
             sendMsg({t: 'emoji', e: ['🔥', '💀', '🤡', '🚀'][+e.code.slice(5) - 5]});
         } else if (e.code === 'Digit1' || e.code === 'Digit2') {
-            Hud.castVote(e.code === 'Digit1' ? 0 : 1);
+            if (predNow && !predNow.includes(myId)) {       // out of it, two left: call the winner
+                myCall = predNow[e.code === 'Digit1' ? 0 : 1];
+                sendMsg({t: 'predict', id: myCall});
+            } else {
+                Hud.castVote(e.code === 'Digit1' ? 0 : 1);
+            }
+        } else if (scene === 'match' && (e.code === 'Digit9' || e.code === 'Digit0' || e.code === 'Minus')) {
+            sendMsg({t: 'stamp', s: {Digit9: 'clutch', Digit0: 'parry', Minus: 'calculated'}[e.code]});
         }
     });
     window.addEventListener('keyup', e => {
-        if (held.delete(e.code))
+        const had = held.delete(e.code), had2 = held2.delete(e.code);
+        if (had || had2)
             pushInput();
     });
     window.addEventListener('blur', () => {
-        held.clear(); touchBits = 0; mouseBits = 0;
+        held.clear(); held2.clear(); touchBits = 0; mouseBits = 0;
         pushInput();
     });
 

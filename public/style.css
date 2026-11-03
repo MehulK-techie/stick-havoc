@@ -144,6 +144,16 @@ body.touch #keysBtn { display: none; }
 #sRows .opts button:disabled { opacity: 1; cursor: default; }
 #sRows .opts button:disabled:not(.on) { opacity: 0.4; }
 #settings > button { width: 100%; margin-top: 8px; }
+#sRows .group { margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 12px; }
+#sRows .gtitle { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 4px; }
+#sRows .group .row:first-of-type { border-top: 0; }
+#sRows .bigsw { width: 100%; padding: 9px; font-weight: 800; letter-spacing: 0.04em; }
+#sRows .bigsw.on { background: rgba(250, 204, 21, 0.16); border-color: #facc15; color: #fde68a; }
+#sRows .stepper { display: flex; align-items: center; gap: 10px; }
+#sRows .stepper button { width: 30px; padding: 4px 0; font-weight: 800; }
+#sRows .stepper b { min-width: 18px; text-align: center; font-size: 15px; }
+#localBtn.on { border-color: #f472b6; color: #fbcfe8; }
+body.in-match #localBtn { display: none; }
 /* the repo links: on the winner's card and in the menu */
 .repos { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
 .repos a { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 12px; border-radius: 999px;

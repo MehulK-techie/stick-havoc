@@ -22,11 +22,12 @@
         ['grab', 'Grab', IN.GRAB, ['KeyG']],
         ['dash', 'Dash', IN.DASH, ['KeyL', 'KeyC']],
         ['use', 'Interact / weapon', IN.USE, ['KeyE']],
+        ['rage', 'Rage Art', IN.RAGE, ['KeyV']],
     ];
     const MAX = 3;                    // keys per action
     // keys the game keeps for itself: menus, the move list, sparring, the console, emojis and votes
     const RESERVED = ['Escape', 'ShiftLeft', 'ShiftRight', 'Enter', 'NumpadEnter', 'Tab', 'KeyP', 'KeyO', 'KeyB', 'KeyQ',
-        'KeyR', ...[1, 2, 5, 6, 7, 8].map(n => 'Digit' + n)];
+        'KeyR', 'Minus', ...[0, 1, 2, 5, 6, 7, 8, 9].map(n => 'Digit' + n)];
     const defaults = () => Object.fromEntries(ACTIONS.map(([id, , , keys]) => [id, keys.slice()]));
     let binds = defaults();
 

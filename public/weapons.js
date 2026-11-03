@@ -57,7 +57,7 @@
     }
 
     // a crate, parachuting or landed
-    function drawCrate(ctx, x, y, landed, t) {
+    function drawCrate(ctx, x, y, landed, t, gold) {
         ctx.save();
         ctx.translate(x, y);
         if (!landed) {                                // the parachute, swaying
@@ -68,6 +68,16 @@
             ctx.stroke();
             ctx.fillStyle = 'rgba(226, 232, 240, 0.85)';
             ctx.beginPath(); ctx.moveTo(-46, -80); ctx.quadraticCurveTo(0, -128, 46, -80); ctx.closePath(); ctx.fill();
+        }
+        if (gold) {                                   // the Rage orb: a glowing gold ball, not a crate
+            ctx.shadowColor = '#facc15';
+            ctx.shadowBlur = 16 + Math.sin(t * 6) * 6;
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath(); ctx.arc(0, -20, 15, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fff7cc';
+            ctx.beginPath(); ctx.arc(-5, -25, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            return;
         }
         ctx.fillStyle = '#334155';
         ctx.fillRect(-18, -32, 36, 32);

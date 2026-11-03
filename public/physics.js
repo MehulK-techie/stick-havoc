@@ -37,7 +37,7 @@
     // Chrono Shift's clock: each phase's speed and length, and what comes next
     const CHRONO = {normal: {speed: 1, secs: 4, next: 'matrix'}, matrix: {speed: 0.45, secs: 6, next: 'hyper', gravity: 0.7},
         hyper: {speed: 1.45, secs: 6, next: 'normal'}};
-    const IN = {LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, LIGHT: 32, HEAVY: 64, DASH: 128, USE: 256, GRAB: 512};
+    const IN = {LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, LIGHT: 32, HEAVY: 64, DASH: 128, USE: 256, GRAB: 512, RAGE: 1024};
     const PROJECTILES = ['laser', 'grenade', 'thrown'];
 
     // ---------------------------------------------------------------- maps
@@ -109,11 +109,42 @@
         spawns: [[400, 720], [1200, 720], [600, 720], [1000, 720], [800, 720], [300, 720], [1300, 720], [500, 720],
             [1100, 720], [700, 720], [900, 720], [400, 560], [1200, 560], [200, 720], [1400, 720]],
     };
-    const ARENAS = ['rooftops', 'reactor', 'asteroid', 'colosseum', 'magma', 'skytrain'];
+    // Magma Shuffle: nine platforms; every 4 s half of them go lava (1.2 s of amber warning first), always
+    // leaving at least three safe. tile: they take part in the shuffle.
+    MAPS.magmashuffle = {
+        name: 'Magma Shuffle', pit: true, lava: {base: 850, amp: 0, period: 9}, shuffle: {every: 4, warn: 1.2},
+        plats: [[110, 680], [705, 680], [1300, 680], [400, 540], [1010, 540], [705, 440], [160, 400], [1250, 400],
+            [705, 300]].map(([x, y]) => ({x, y, w: 190, h: 18, tile: true})),
+        spawns: [[205, 680], [1395, 680], [495, 540], [1105, 540], [255, 400], [1345, 400], [800, 680], [800, 440]],
+    };
+    // Kinetic Foundry: conveyors push you along the floor (belt: px/s), a pinball bumper pillar in the middle
+    // ricochets anything slammed into it, the side walls break and regrow after 6 s (as a blueprint first)
+    MAPS.kinetic = {
+        name: 'Kinetic Foundry', pit: false,
+        plats: [{x: 0, y: 820, w: 600, h: 80, floor: true, belt: 150}, {x: 600, y: 820, w: 400, h: 80, floor: true},
+            {x: 1000, y: 820, w: 600, h: 80, floor: true, belt: -150},
+            {x: 765, y: 640, w: 70, h: 180, solid: true, bumper: true, hp: 99999},
+            {x: 80, y: 520, w: 50, h: 300, solid: true, hp: 3, respawnAfter: 6},
+            {x: 1470, y: 520, w: 50, h: 300, solid: true, hp: 3, respawnAfter: 6},
+            {x: 280, y: 600, w: 240, h: 16, oneWay: true}, {x: 1080, y: 600, w: 240, h: 16, oneWay: true},
+            {x: 640, y: 430, w: 320, h: 16, oneWay: true}],
+        spawns: [[350, 820], [1250, 820], [400, 600], [1200, 600], [700, 430], [900, 430], [200, 820], [1400, 820]],
+    };
+    // Fracture Sanctum: ten timber islands over an abyss; stand on one for 1.5 s and it shakes, breaks and
+    // is gone for 3 s before it forms again
+    MAPS.sanctum = {
+        name: 'Fracture Sanctum', pit: true,
+        plats: [[140, 700], [715, 700], [1290, 700], [400, 560], [1030, 560], [140, 430], [715, 430], [1290, 430],
+            [410, 300], [1020, 300]].map(([x, y]) => ({x, y, w: 170, h: 16, crumble: true, crumbleAfter: 1.5,
+            respawnAfter: 3, timber: true})),
+        spawns: [[225, 700], [1375, 700], [485, 560], [1115, 560], [225, 430], [1375, 430], [800, 700], [800, 430]],
+    };
+    const ARENAS = ['rooftops', 'reactor', 'asteroid', 'colosseum', 'magma', 'skytrain', 'magmashuffle', 'kinetic',
+        'sanctum'];
 
     function stage(map) {
         const m = MAPS[map] || MAPS.lobby;
-        return m.plats.map(p => Object.assign({alive: true, load: 0, breaking: 0, respawn: 0, maxHp: p.hp || 0}, p));
+        return m.plats.map(p => Object.assign({alive: true, load: 0, breaking: 0, respawn: 0, heat: 0, maxHp: p.hp || 0}, p));
     }
 
     function createWorld(map) {
@@ -123,7 +154,9 @@
             tunnel: m.tunnel ? {next: m.tunnel.every, x: null, hit: []} : null, hotT: 30, hot: 0, airReset: false,
             hitstop: 0, hazard: null, hazardT: 0, anvilT: 0, events: [], noDamage: false,
             weapons: false, crates: [], shots: [], crateT: 8,
-            gravity: m.gravity || 1, pit: !!m.pit,
+            gravity: m.gravity || 1, pit: !!m.pit, hold: false,
+            shuffle: m.shuffle ? {t: m.shuffle.every, every: m.shuffle.every, warn: m.shuffle.warn, next: null} : null,
+            nodes: m.nodes ? m.nodes.map(n => Object.assign({}, n)) : null,
             beam: m.beam ? {next: m.beam.every, phase: 'idle', x: -100, dir: 1, beeps: 0, hit: []} : null};
     }
 
@@ -132,7 +165,8 @@
             ground: false, jumps: 2, st: 'air', atk: null, combo: 0, comboT: 0, stun: 0, inv: 0,
             shield: C.SPAWN_SHIELD, dashT: 0, dashCd: 0, airDash: true, ledge: null, ledgeT: 0, ledgeCd: 0, juggle: 0,
             spin: 0, spinV: 0, drop: 0, wallCd: 0, koT: 0, lastHit: null, prev: 0,
-            blocking: false, blockT: 0, guardHits: 0, guardT: 0, weapon: null, comboN: 0, comboDmg: 0, comboBy: null, diT: 0};
+            blocking: false, blockT: 0, guardHits: 0, guardT: 0, weapon: null, comboN: 0, comboDmg: 0, comboBy: null, diT: 0,
+            maxHp: C.HP, rage: 0, rageGain: 1, kbResist: 1, wallHits: 0};
     }
 
     // the lobby's punching dummy: springs back to where it stands, never falls over for good
@@ -169,9 +203,15 @@
         return {x: f.face, y: 0};
     }
 
-    // the Rage Art is ready: under 25 % (or Overdrive, from the start), once a round
+    // the Rage Art is ready: the meter is full (it fills as you hit and are hit) or you're under 25 %, once a round
     function raging(w, f) {
-        return !f.rageUsed && f.hp > 0 && !w.noDamage && !f.dummy && (f.hp <= C.HP * 0.25 || !!f.overdrive);
+        return !f.rageUsed && f.hp > 0 && !w.noDamage && !f.dummy && (f.hp <= (f.maxHp || C.HP) * 0.25 || f.rage >= 100);
+    }
+
+    // the meter: Overcharge doubles it (w.rageMul), the underdogs' Overdrive adds a quarter (rageGain)
+    function gainRage(w, f, n) {
+        if (f && f.rage !== undefined && !f.rageUsed)
+            f.rage = Math.min(100, f.rage + n * (f.rageGain || 1) * (w.rageMul || 1));
     }
 
     function hurt(f) {
@@ -285,7 +325,7 @@
             stun = 0.55;
             break;
         default:                                       // a weapon, or a projectile
-            kx = a.face * wk.kx; ky = wk.ky; stun = wk.stun; tumble = !!wk.tumble;
+            kx = a.face * wk.kx * (w.crateKb || 1); ky = wk.ky * (w.crateKb || 1); stun = wk.stun; tumble = !!wk.tumble;
         }
         // a juggle: light hits keep an airborne, launched opponent up there
         if (airborne && t.juggle > 0 && STRING.includes(kind)) {
@@ -316,8 +356,6 @@
         } else if (a.id !== undefined && raging(w, a)) {
             dmg = Math.round(dmg * 1.15);              // rage: everything hits 15 % harder
         }
-        if (t.overdrive)                               // the underdogs' Overdrive: a quarter off every blow
-            dmg = Math.round(dmg * 0.75);
         // the combo: more hits while they're still reeling from the last
         const chained = t.comboBy === a.id && w.time - (t.comboAt || -9) < 0.5;
         t.comboAt = w.time;
@@ -326,8 +364,9 @@
         t.comboBy = a.id;
         if (t.comboN >= 2)
             w.events.push({type: 'combo', by: a.id, on: t.id, n: t.comboN, dmg: t.comboDmg, crit: t.comboN >= 4});
-        t.vx = kx * gloves;
-        t.vy = ky * gloves;
+        const resist = t.kbResist || 1;                // (Overdrive: a little harder to knock about)
+        t.vx = kx * gloves * resist;
+        t.vy = ky * gloves * resist;
         if (t.vy < 0)
             t.ground = false;
         t.stun = stun;
@@ -377,6 +416,8 @@
             return;
         }
         t.hp = Math.max(0, t.hp - shown);
+        gainRage(w, a, shown * 1.5);
+        gainRage(w, t, shown);
         if (t.hp <= 0) {
             if (a.hp > 0 && a.hp < C.HP * 0.25)
                 callout(w, a, 'CLUTCH REVERSAL!');
@@ -501,6 +542,8 @@
             move(w, f, dt);
         separate(w, live);
         platforms(w, live, dt);
+        heat(w, live, dt);
+        nodesStep(w, live, dt);
         movers(w, live, dt);
         ball(w, live, dt);
         lava(w, live, dt);
@@ -584,7 +627,7 @@
             // the sky train's slipstream: in the air you drift backwards
             const wind = !f.ground && MAPS[w.map] && MAPS[w.map].wind ? MAPS[w.map].wind : 0;
             const di = !f.ground && f.diT > 0;      // (off the lava: steer hard)
-            const target = dir * C.RUN * busy * (di ? 1.5 : 1) * (f.overdrive ? 1.15 : 1) - wind;
+            const target = dir * C.RUN * busy * (di ? 1.5 : 1) * (w.speedMul || 1) - wind;
             const acc = f.ground ? (w.hazard === 'ice' ? C.ACC_ICE : C.ACC_GROUND) : C.ACC_AIR * (di ? 1.8 : 1);
             f.vx += Math.max(-acc * dt, Math.min(acc * dt, target - f.vx));
             if (dir && !f.atk)
@@ -632,7 +675,8 @@
             return;
         }
         // J + K together while raging: the Rage Art (it cancels a punch still winding up)
-        if ((pressed & (IN.LIGHT | IN.HEAVY)) && (k & IN.LIGHT) && (k & IN.HEAVY) && raging(w, f) && f.dashT <= 0 &&
+        if (((pressed & IN.RAGE) || ((pressed & (IN.LIGHT | IN.HEAVY)) && (k & IN.LIGHT) && (k & IN.HEAVY))) &&
+            raging(w, f) && f.dashT <= 0 &&
             (!f.atk || (STRING.includes(f.atk.kind) && f.atk.t < f.atk.move.from))) {
             const foe = w.fighters.filter(o => o !== f && !o.dummy && o.st !== 'ko' && o.st !== 'gone' && (!f.team || o.team !== f.team))
                 .sort((p, q) => Math.abs(p.x - f.x) - Math.abs(q.x - f.x))[0];
@@ -728,7 +772,7 @@
         }
         if (f.weapon)
             return;
-        const crate = w.crates.find(c => c.landed ? Math.abs(c.x - f.x) < (pressedUse ? 70 : 34) && Math.abs(c.y - f.y) < 50 :
+        const crate = w.crates.find(c => c.kind !== 'rage' && c.landed ? Math.abs(c.x - f.x) < (pressedUse ? 70 : 34) && Math.abs(c.y - f.y) < 50 :
             pressedUse && !f.ground && Math.abs(c.x - f.x) < 60 && Math.abs(c.y - 20 - (f.y - 50)) < 70);
         if (crate)
             takeCrate(w, f, crate);
@@ -737,6 +781,11 @@
     // a crate's weapon into f's hands; one snatched out of the air pops its parachute and bounces you up
     function takeCrate(w, f, crate) {
         w.crates = w.crates.filter(c => c !== crate);
+        if (crate.kind === 'rage') {                   // the golden orb: the Rage meter, full
+            f.rage = 100;
+            w.events.push({type: 'pickup', id: f.id, kind: 'rage', x: Math.round(crate.x), y: Math.round(crate.y), air: !crate.landed});
+            return;
+        }
         f.weapon = {kind: crate.kind, uses: Weapons.KINDS[crate.kind].uses};
         const air = !crate.landed;
         if (air) {
@@ -867,7 +916,7 @@
         if (solid && solid.solid) {                  // a pillar takes the blow, and gives way after a few
             solid.hp--;
             if (solid.hp <= 0) {
-                solid.alive = false; solid.respawn = 14;
+                solid.alive = false; solid.respawn = solid.respawnAfter || 14;
                 w.events.push({type: 'pillar', x: Math.round(solid.x + solid.w / 2), y: Math.round(solid.y + solid.h / 2)});
             }
         }
@@ -945,13 +994,21 @@
         const oldY = f.y, wasGround = f.ground, impact = f.vy;
         f.x += f.vx * dt;
         f.y += f.vy * dt;
+        // the ceiling's repulsor field: nobody camps at the very top
+        if (w.map !== 'lobby' && f.st !== 'ko' && f.y - 94 < 50)
+            f.vy = Math.max(f.vy, 240);
         const hard = (f.st === 'tumble' || f.st === 'hurt' || f.st === 'ko') && Math.abs(f.vx) > 520;
         // the arena's side walls: bumpers (asteroid), or a bounce after a hard hit
         if (f.x < 22 || f.x > W - 22) {
             const side = f.x < 22 ? 1 : -1;
             f.x = side > 0 ? 22 : W - 22;
             if (MAPS[w.map] && MAPS[w.map].bumpers && f.st !== 'ko') {
-                f.vx = side * 1250; f.vy = -560; f.st = 'air'; f.stun = 0; f.atk = null;
+                // wall-spamming in low gravity decays: each touch in a row throws you up less, and the third
+                // slides you down (it resets when you land)
+                const n = f.wallHits = (f.wallHits || 0) + 1;
+                f.vx = side * 1250 * (n >= 3 ? 0.4 : 1);
+                f.vy = n >= 3 ? Math.max(f.vy, 220) : -560 * Math.max(0.1, 1 - n * 0.4);
+                f.st = 'air'; f.stun = 0; f.atk = null;
                 w.events.push({type: 'bumper', x: Math.round(f.x), y: Math.round(f.y - 50)});
             } else if (hard) {
                 bounceOff(w, f, side, null);
@@ -966,10 +1023,16 @@
             if (f.y > p.y + 4 && f.y - 94 < p.y + p.h && f.x + 20 > p.x && f.x - 20 < p.x + p.w) {
                 const side = f.x < p.x + p.w / 2 ? -1 : 1;
                 f.x = side < 0 ? p.x - 20 : p.x + p.w + 20;
-                if (hard && f.st !== 'ko')
+                if (p.bumper && Math.abs(f.vx) > 520 && f.st !== 'ko') {   // the pinball pillar: slammed into, you ricochet
+                    f.vx = side * Math.max(820, Math.abs(f.vx) * 1.1); f.vy = Math.min(f.vy, -420);
+                    f.st = 'tumble'; f.spinV = side * 14; f.stun = 0.35; f.atk = null; f.ground = false;
+                    hitStop(w, [f], 0.05);
+                    w.events.push({type: 'bumper', x: Math.round(f.x - side * 20), y: Math.round(f.y - 60)});
+                } else if (hard && f.st !== 'ko') {
                     bounceOff(w, f, side, p);
-                else
+                } else {
                     f.vx = 0;
+                }
             }
         }
         // platforms: land on top (one-way ones can be jumped through from below)
@@ -1021,8 +1084,10 @@
             f.climbStart = undefined;                 // back on the floor, or off the tower: the clock resets
             w.events.push({type: 'climbReset', id: f.id});
         }
+        if (f.ground && f.plat && f.plat.belt && f.st !== 'ko')    // a conveyor carries you
+            f.x = Math.max(22, Math.min(W - 22, f.x + f.plat.belt * dt));
         if (f.ground && !wasGround) {
-            f.jumps = 2; f.airDash = true; f.juggle = 0; f.noGrab = undefined;
+            f.jumps = 2; f.airDash = true; f.juggle = 0; f.noGrab = undefined; f.wallHits = 0;
             if (f.atk && f.atk.kind === 'dive')
                 f.atk = null;
             if (f.atk && f.atk.kind === 'pound') {      // the pound lands: a shockwave along the floor
@@ -1114,6 +1179,57 @@
         return oldY <= top0 + 2 && f.y >= p.y && f.x >= x0 - 6 && f.x <= x1 + 6;
     }
 
+    // Magma Shuffle, and the Shuffling Lava twist on any map: every few seconds half the platforms (never more
+    // than all but three) turn to lava. heat: 0 safe, 1 warning (still standable), 2 lava.
+    function heat(w, live, dt) {
+        const s = w.shuffle;
+        if (!s || w.hold)
+            return;
+        const cells = w.plats.filter(p => p.alive && !p.floor && !p.solid && !p.parkour);
+        s.t -= dt;
+        if (!s.next && s.t <= s.warn) {
+            const n = cells.length, lava = Math.max(0, Math.min(Math.floor(n / 2), n - 3));
+            s.next = cells.slice().sort(() => Math.random() - 0.5).slice(0, lava);
+            for (const p of s.next) {
+                if (p.heat !== 2)
+                    p.heat = 1;
+            }
+            w.events.push({type: 'heatWarn'});
+        }
+        if (s.t <= 0) {
+            for (const p of cells)
+                p.heat = s.next && s.next.includes(p) ? 2 : 0;
+            s.next = null;
+            s.t += s.every;
+            w.events.push({type: 'heat'});
+        }
+        for (const f of live) {
+            if (f.st !== 'ko' && f.ground && f.plat && f.plat.heat === 2 && f.inv <= 0 && !f.dummy)
+                burn(w, f, 'tile');
+        }
+    }
+
+    // pinball bumpers (Pinball Havoc): touch one and you're fired off it
+    function nodesStep(w, live, dt) {
+        if (!w.nodes)
+            return;
+        for (const f of live) {
+            f.nodeCd = Math.max(0, (f.nodeCd || 0) - dt);
+            if (f.st === 'ko' || f.dummy || f.ghost || f.nodeCd > 0)
+                continue;
+            for (const n of w.nodes) {
+                const dx = f.x - n.x, dy = f.y - 50 - n.y, d = Math.hypot(dx, dy);
+                if (d >= n.r + 24)
+                    continue;
+                const nx = dx / (d || 1), ny = dy / (d || 1);
+                f.vx = nx * 950; f.vy = ny * 900 - 200; f.ground = false; f.st = 'tumble';   // (away from it, with a lift)
+                f.spinV = nx > 0 ? 12 : -12; f.stun = 0.3; f.atk = null; f.ledge = null; f.nodeCd = 0.3;
+                w.events.push({type: 'bumper', x: Math.round(n.x), y: Math.round(n.y)});
+                break;
+            }
+        }
+    }
+
     function platforms(w, live, dt) {
         for (const p of w.plats) {
             if (!p.crumble && !p.solid)
@@ -1136,7 +1252,7 @@
                     p.alive = false; p.respawn = p.respawnAfter || 7;
                     w.events.push({type: 'crumble', x: Math.round(p.x + p.w / 2), y: p.y});
                 }
-            } else if (live.some(f => f.ground && f.plat === p)) {
+            } else if (!w.hold && live.some(f => f.ground && f.plat === p)) {   // (not while the countdown runs)
                 p.load += dt;
                 if (p.load > (p.crumbleAfter || 1.6))
                     p.breaking = 0.7;
@@ -1353,13 +1469,14 @@
     function crates(w, live, dt) {
         if (w.weapons) {
             w.crateT -= dt;
-            if (w.crateT <= 0 && w.crates.length < 3) {
-                w.crateT = (14 + Math.random() * 6) / (w.crateRate || 1);   // (the sandbox can turn it up)
-                const tops = w.plats.filter(p => p.alive && p.w > 120);
+            if (w.crateT <= 0 && w.crates.length < (w.crateEvery ? 5 : 3)) {
+                w.crateT = w.crateEvery || (14 + Math.random() * 6) / (w.crateRate || 1);   // (the sandbox, or a twist, speeds it up)
+                // flat ground only (never a pillar's side or top), lava excluded, 48 px in from each edge
+                const tops = w.plats.filter(p => p.alive && !p.solid && p.heat !== 2 && p.w >= 160);
                 const p = tops[Math.floor(Math.random() * tops.length)];
                 if (p) {
-                    const kind = Weapons.NAMES[Math.floor(Math.random() * Weapons.NAMES.length)];
-                    const x = p.x + 40 + Math.random() * (p.w - 80);
+                    const kind = Math.random() < 0.12 ? 'rage' : Weapons.NAMES[Math.floor(Math.random() * Weapons.NAMES.length)];
+                    const x = p.x + 48 + Math.random() * (p.w - 96);
                     w.crates.push({x, y: -60, kind, landed: false, life: 22});
                     w.events.push({type: 'crate', x: Math.round(x)});
                 }
@@ -1383,6 +1500,12 @@
         for (const f of live) {                       // walking over a crate picks it up
             if (!f.weapon && !f.dummy && f.st !== 'ko')
                 useItem(w, f, false);
+        }
+        for (const c of w.crates.filter(c => c.kind === 'rage')) {    // the orb: touch it, in the air or on the ground
+            const f = live.find(o => o.st !== 'ko' && !o.dummy && !o.ghost && Math.abs(o.x - c.x) < 44 &&
+                Math.abs(o.y - 50 - (c.y - 20)) < 70);
+            if (f)
+                takeCrate(w, f, c);
         }
     }
 

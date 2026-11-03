@@ -90,8 +90,12 @@ has joined (their names over their heads). Three stations:
   setting that deals a fresh mode and map together every round, weighted,
   never the last round's mode or map again and never a pairing from the
   last two rounds), first to 3, 5 or 7, a round timer (45, 60, 90 s or none),
-  weapons on or off, a player limit (2-15) and the map (or Random; under
-  Banger Shuffle the map row steps aside). Changes
+  weapons on or off, a player limit (2-15), **Surprises** (a new arena every
+  round and a twist after the first; see Fighting) and the map (or Random;
+  under Banger Shuffle the map row steps aside). The drawer is in three
+  groups: Banger Shuffle (one switch); Arena (mode, map, series) and Rules;
+  and **Bots** (`− N +`: that many computer fighters join the match, up to
+  the player limit) beside Start. Changes
   show on everyone's screen at once; anyone else at the console sees them
   read-only ("Waiting for Host to start..."). `Enter` starts: everyone is on
   the stage at once (`GET READY` for half a second while it loads), then one
@@ -164,10 +168,25 @@ has joined (their names over their heads). Three stations:
 | Use a station · pick up / throw a weapon | `E` | E |
 | Move list | `Shift` (or ? Moves) | ? (top right) |
 | Practice bot (lobby) · its difficulty · 1P Solo window (host) | `P` · `B` · `O` | |
+| Rage Art (meter full, or under 25 %) | `J` + `K`, or `V` | RAGE pill |
+| Balcony (out of the round): stamps · call the winner | `9` `0` `-` · `1` `2` | |
 | 1P: restart the round · pause (menu) | `R` · `Esc` | |
 | Menu: controls, move list, back to lobby, repo links | `Esc` (in a match) | |
 | Punch where you point | left click | |
 | Emojis 🔥 💀 🤡 🚀 · vote | `5`–`8` · `1` `2` | the buttons |
+
+**Local 2P** (`👥 Local 2P`, lobby, top right): a second fighter on the same
+keyboard, no second browser. Both keep a floating `▼ P1` / `▼ P2` tag and a
+ring at their feet.
+
+| | Move | Attack | Jump | Dash | Rage | Grab | Use |
+|---|---|---|---|---|---|---|---|
+| P1 | `W` `A` `S` `D` | `F` | `Space` | `G` | `R` | `T` | `E` |
+| P2 | `←` `↑` `↓` `→` | `K` | `L` | `;` | `O` | `'` | `/` |
+
+`↑` + attack launches, `↓` + attack sweeps, `→` + attack lunges, `↓` guards.
+The guest is a full player (it counts toward the player limit, plays King of
+the Hill, Team Brawl, everything); `Local 2P` again removes it.
 
 **Rebinding**: `⌨️ Controls` (top right; in a match, beside `? Moves`) lists
 every action with its keys. Click one and press the new key; `+` adds a
@@ -232,6 +251,9 @@ nearest opponent close by, as in Tekken.
   Katana (5 fast, long slashes), Home-Run Bat (3 slow swings that send them
   across the arena), Laser Blaster (3 shots, with recoil), Bouncy Bomb
   (thrown: bounces twice, then blows everyone back).
+- **Rage meter**: a thin gold line under every health bar fills as you hit (1.5x the damage) and get hit (1x). Full, or under 25 % health, and the Rage Art is ready (`J` + `K`, `V`, or `R` in Local 2P). A rare golden orb drops with the crates (about 1 in 8): touch it, in the air or on the ground, and the meter is full.
+- **Series that never repeat** (the host's `Surprises: On`, the default): every round is a different arena (never one of the last two), with the spawn pairs dealt in a new order, and every round after the first brings a twist, shown top centre: **SHUFFLING LAVA** (any map's platforms alternate safe and molten every 4 s), **VOLATILE CRATES** (a drop every 4 s, weapon hits 1.4x harder), **OVERCHARGE** (1.3x speed, the Rage meter twice as fast), **PINBALL HAVOC** (violet bumpers in the middle: touch one and you're fired off it). Turn Surprises off to keep the chosen arena.
+- **The balcony**: when you're out of a round you watch from a strip at the top, 55 px from the next fighter, out of the fight. Stamp the action: `9` CLUTCH, `0` PARRY, `-` CALCULATED. When two are left, `1` / `2` calls the winner; after the round it says who called it.
 - **The Rage Art**: under 25 % health a fighter burns with red and gold
   wisps (RAGE: everything they land hits 15 % harder). `J` + `K` together
   (on a phone, the `RAGE` pill) unleashes it once a round: a flash, a surge
@@ -267,7 +289,7 @@ nearest opponent close by, as in Tekken.
 |---|---|
 | **King of the Hill** | Two fight, the rest queue (and vote on hazards, and send emojis). The loser goes to the back; the next comes in with a 2.5 s shield. First to 5 wins takes the match. Alone, you spar with a training bot. |
 | **Royal Rumble** | Everyone at once; last one standing wins the round. |
-| **Team Brawl** | Red against Blue: everyone is dealt onto a side (again when the line-up changes), with the team's colour on their glow, name and health bar. No friendly fire (punches, throws, shots and bombs pass through teammates). The last side standing takes the round, and every member scores. If the sides are uneven (3 v 2, 2 v 1), the smaller one gets **Overdrive**: a gold aura, 25 % less damage taken, 1.15x speed, and the Rage Art from the first second. |
+| **Team Brawl** | Red against Blue: everyone is dealt onto a side (again when the line-up changes), with the team's colour on their glow, name and health bar. No friendly fire (punches, throws, shots and bombs pass through teammates). The last side standing takes the round, and every member scores. If the sides are uneven (3 v 2, 2 v 1), the smaller one gets **Overdrive**: a gold aura, +30 % max health for each teammate it's short, a Rage meter that fills 25 % faster and 15 % less knockback. The winning squad stands on the podium together (`VICTORY: BLUE SQUAD — MK // FRIEND2`), figures pumping in step. |
 | **Chrono Shift** | Everyone at once, while the stage's clock shifts: normal (4 s), then the matrix (6 s at 0.45x, with floaty jumps), then hyper drive (6 s at 1.45x), and round again, each announced (`⚡ CHRONO SHIFT: HYPER DRIVE!`). |
 | **Floor Is Lava** | Everyone at once; every 30 s (3 s warning) every platform glows hot for 8 s: touch it and you're thrown up and burned. Stay up: double jumps, wall kicks, and landing a hit in the air gives your jump and air dash back. |
 | **Bomb Tag** | One player carries a ticking bomb (20 s). Punch someone to pass it on. At zero it explodes: the carrier is out and everyone near is blown away. A new bomb goes to a survivor, until one is left. No health in this mode, only the bomb and the pit. |
@@ -278,6 +300,9 @@ nearest opponent close by, as in Tekken.
 | **The Reactor Core** | Tiers above a floor that a beam sweeps every 18 s: three beeps and red stripes first. Get off the floor. |
 | **Low-Gravity Asteroid** | 0.55x gravity, big floaty jumps, bumpers on both edges that fling you back across. A drop below. |
 | **The Magma Foundry** | Two hover plates (one sliding, one rising and falling) over a pool of lava that rises and sinks; touch it and it throws you up, burning (12 damage), but in control: your double jump and air dash come back, and for 1.5 s you steer hard in the air (1.8x acceleration, 1.5x speed) to get back onto a platform. Hot platforms in Floor Is Lava throw you the same way. |
+| **Magma Shuffle** | Nine platforms over a lava pool. Every 4 s half of them (never more than all but three) turn to lava: a 1.2 s warning first (pulsing amber border, sparks), then molten orange, which burns and launches you; the rest cool to safe basalt. Nothing shuffles during the countdown. |
+| **Kinetic Foundry** | Two conveyor belts on the floor carry you towards the middle (150 px/s), where a violet pinball pillar throws back anyone slammed into it. The side walls break and regrow after 6 s, shown as a cyan wireframe blueprint with a scan line first. |
+| **Fracture Sanctum** | Ten timber islands over an abyss: stand on one for 1.5 s and it shakes, breaks, and forms again 3 s later (fading in). Not during the countdown. |
 | **Cyber Sky Train** | The roof of a speeding train: in the air the slipstream drags you backwards, and every 15 s (a flashing signal first) a tunnel mouth sweeps the roof at head height: guard (duck) under it or be knocked off. |
 | **The Colosseum** | Flat and fair, with a stone pillar each side to bounce people off. Each pillar breaks after three bounces (and is rebuilt after 14 s). |
 

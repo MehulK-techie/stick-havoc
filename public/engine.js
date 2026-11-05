@@ -13,6 +13,7 @@
     let sparring = false;               // practice against the bot, simulated in this browser (spar.js)
     let localOn = false, guestId = null;    // 👥 Local 2P: a second fighter on this keyboard (its id)
     const held2 = new Map();            // the second player's held keys
+    let beltNow = null, debNow = null;  // Kinetic Foundry: the belts' direction and warning strobe; falling wall debris
     let outIds = [], predNow = null, myCall = null;   // who's out of the round (the balcony), the last two, my call
     const stamps = [];                  // spectators' callout stamps [{id, s, t0}]
     let sandbox = false;                // a 1P sandbox match is on (Esc goes back to the lobby)
@@ -62,8 +63,10 @@
                 if (localOn !== wasOn) {
                     held2.clear();
                     Hud.setLocal(localOn);
-                    Hud.toast(localOn ? 'Local 2P on. P1: W A S D · F attack · Space jump · G dash · R rage · T grab. ' +
-                        'P2: arrows · K attack · L jump · ; dash · O rage · \' grab' : 'Local 2P off', 7000);
+                    if (localOn)
+                        Hud.openGuide();                   // who plays with what
+                    else
+                        Hud.toast('Local 2P off');
                 }
             } else if (m.type === 'welcome') {
                 myId = m.id;
@@ -122,6 +125,8 @@
     function onSnapshot(s) {
         sandbox = !!s.sandbox && s.scene === 'match';
         outIds = s.out || [];
+        beltNow = s.belt || null;
+        debNow = s.deb || null;
         predNow = s.pred || null;
         if (!predNow || s.ph !== 'fight')
             myCall = null;
@@ -390,6 +395,10 @@
             Sfx.play('crumble');
             break;
         case 'bumper':
+            if (ev.heavy) {                           // the pinball pillar: a hard hit
+                cam.shake = Math.max(cam.shake, 24);
+                burst(ev.x, ev.y, '#a78bfa', 30, 900);
+            }
             ring(ev.x, ev.y, '#a78bfa');
             Sfx.play('bumper');
             break;
@@ -479,6 +488,22 @@
         case 'match':
             cam.z = 0.7; cam.y = H * 0.8;        // a sweep in to the new stage
             Hud.toast(ev.shuffle ? `Banger Shuffle: ${MODES[ev.mode]} on ${ev.name}` : ev.rotate ? `Next arena: ${ev.name}` : ev.name);
+            break;
+        case 'beltWarn':
+            Sfx.play('siren');
+            break;
+        case 'beltFlip':
+            Sfx.play('clang');
+            cam.shake = Math.max(cam.shake, 8);
+            Hud.toast(`Belts reversed ${ev.dir > 0 ? '' : '(outward) '}`.trim(), 1500);
+            break;
+        case 'debris':
+            cam.shake = Math.max(cam.shake, 12);
+            burst(ev.x, ev.y, '#94a3b8', 14, 500);
+            Sfx.play('crumble');
+            break;
+        case 'debrisHit':
+            burst(ev.x, ev.y, '#94a3b8', 10, 400);
             break;
         case 'heatWarn':                          // Magma Shuffle: the next tiles are about to go
             Sfx.play('hazard');
@@ -830,6 +855,16 @@
         drawPlatforms(v);
         if (v && v.s.nodes)
             drawNodes(v.s.nodes);
+        if (v && debNow) {                      // falling wall shards
+            ctx.fillStyle = '#94a3b8';
+            for (const [x, y] of debNow) {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(clock * 9 + x);
+                ctx.beginPath(); ctx.moveTo(-8, -3); ctx.lineTo(2, -9); ctx.lineTo(9, 1); ctx.lineTo(-2, 8); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+        }
         if (v) {
             drawHazards(v.s);
             for (const [x, y] of v.an)
@@ -1014,12 +1049,18 @@
                 ctx.beginPath(); ctx.rect(p.x, p.y - 12, p.w, 12); ctx.clip();
                 ctx.strokeStyle = 'rgba(251, 191, 36, 0.6)';
                 ctx.lineWidth = 2;
-                const dir = Math.sign(p.belt), off = (clock * Math.abs(p.belt) * 0.6) % 36;
+                const dir = Math.sign(p.belt) * (beltNow ? beltNow.d : 1), off = (clock * Math.abs(p.belt) * 0.3) % 36;
                 for (let x = p.x - 36; x < p.x + p.w + 36; x += 36) {
                     const cx = x + (dir > 0 ? off : 36 - off);
                     ctx.beginPath(); ctx.moveTo(cx, p.y - 9); ctx.lineTo(cx + 7 * dir, p.y - 5); ctx.lineTo(cx, p.y - 1); ctx.stroke();
                 }
                 ctx.restore();
+            }
+            if (p.belt && beltNow && beltNow.w && Math.floor(clock * 10) % 2) {   // about to reverse: a strobe
+                ctx.fillStyle = 'rgba(251, 191, 36, 0.28)';
+                ctx.fillRect(p.x, p.y - 40, p.w, 40);
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath(); ctx.arc(p.x + 14, p.y - 14, 6, 0, Math.PI * 2); ctx.arc(p.x + p.w - 14, p.y - 14, 6, 0, Math.PI * 2); ctx.fill();
             }
             if (p.crumble && p.load > 0) {              // how close the bridge is to giving way
                 ctx.fillStyle = 'rgba(251, 146, 60, 0.5)';
@@ -1716,12 +1757,13 @@
             return;
         }
         if (e.code === 'Escape') {
-            const open = Hud.isSettingsOpen() || Hud.isSoloOpen() || Hud.isMenuOpen() ||
+            const open = Hud.isSettingsOpen() || Hud.isSoloOpen() || Hud.isMenuOpen() || Hud.isGuideOpen() ||
                 !document.getElementById('moves').classList.contains('hidden');
             Hud.toggleMoves(false);
             Hud.closeSettings();
             Hud.closeSolo();
             Hud.closeMenu();
+            Hud.closeGuide();
             if (scene === 'match' && !open && !e.repeat)   // nothing to close: the menu (in 1P, a pause)
                 Hud.openMenu(solo, solo || myId === hostId);
             return;

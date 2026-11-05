@@ -120,9 +120,9 @@
     // Kinetic Foundry: conveyors push you along the floor (belt: px/s), a pinball bumper pillar in the middle
     // ricochets anything slammed into it, the side walls break and regrow after 6 s (as a blueprint first)
     MAPS.kinetic = {
-        name: 'Kinetic Foundry', pit: false,
-        plats: [{x: 0, y: 820, w: 600, h: 80, floor: true, belt: 150}, {x: 600, y: 820, w: 400, h: 80, floor: true},
-            {x: 1000, y: 820, w: 600, h: 80, floor: true, belt: -150},
+        name: 'Kinetic Foundry', pit: false, belts: {every: 6, warn: 1},   // the belts reverse every 6 s, a strobe first
+        plats: [{x: 0, y: 820, w: 600, h: 80, floor: true, belt: 300}, {x: 600, y: 820, w: 400, h: 80, floor: true},
+            {x: 1000, y: 820, w: 600, h: 80, floor: true, belt: -300},
             {x: 765, y: 640, w: 70, h: 180, solid: true, bumper: true, hp: 99999},
             {x: 80, y: 520, w: 50, h: 300, solid: true, hp: 3, respawnAfter: 6},
             {x: 1470, y: 520, w: 50, h: 300, solid: true, hp: 3, respawnAfter: 6},
@@ -156,7 +156,8 @@
             weapons: false, crates: [], shots: [], crateT: 8,
             gravity: m.gravity || 1, pit: !!m.pit, hold: false,
             shuffle: m.shuffle ? {t: m.shuffle.every, every: m.shuffle.every, warn: m.shuffle.warn, next: null} : null,
-            nodes: m.nodes ? m.nodes.map(n => Object.assign({}, n)) : null,
+            nodes: m.nodes ? m.nodes.map(n => Object.assign({}, n)) : null, debris: [],
+            belts: m.belts ? {t: m.belts.every, every: m.belts.every, warn: m.belts.warn, dir: 1, warned: false} : null,
             beam: m.beam ? {next: m.beam.every, phase: 'idle', x: -100, dir: 1, beeps: 0, hit: []} : null};
     }
 
@@ -544,6 +545,8 @@
         platforms(w, live, dt);
         heat(w, live, dt);
         nodesStep(w, live, dt);
+        beltStep(w, dt);
+        debrisStep(w, live, dt);
         movers(w, live, dt);
         ball(w, live, dt);
         lava(w, live, dt);
@@ -915,6 +918,12 @@
         w.events.push({type: 'wallbounce', id: f.id, x: Math.round(f.x), y: Math.round(f.y - 50), pillar: !!solid});
         if (solid && solid.solid) {                  // a pillar takes the blow, and gives way after a few
             solid.hp--;
+            if (solid.respawnAfter) {                // an industrial wall: shards of it fall as hazards
+                for (let i = 0, n = solid.hp <= 0 ? 10 : 6; i < n; i++)
+                    w.debris.push({x: solid.x + solid.w / 2, y: solid.y + Math.random() * 90, vx: side * (40 + Math.random() * 220),
+                        vy: -(100 + Math.random() * 320), life: 3, hit: []});
+                w.events.push({type: 'debris', x: Math.round(solid.x + solid.w / 2), y: Math.round(f.y - 60)});
+            }
             if (solid.hp <= 0) {
                 solid.alive = false; solid.respawn = solid.respawnAfter || 14;
                 w.events.push({type: 'pillar', x: Math.round(solid.x + solid.w / 2), y: Math.round(solid.y + solid.h / 2)});
@@ -1024,10 +1033,10 @@
                 const side = f.x < p.x + p.w / 2 ? -1 : 1;
                 f.x = side < 0 ? p.x - 20 : p.x + p.w + 20;
                 if (p.bumper && Math.abs(f.vx) > 520 && f.st !== 'ko') {   // the pinball pillar: slammed into, you ricochet
-                    f.vx = side * Math.max(820, Math.abs(f.vx) * 1.1); f.vy = Math.min(f.vy, -420);
-                    f.st = 'tumble'; f.spinV = side * 14; f.stun = 0.35; f.atk = null; f.ground = false;
-                    hitStop(w, [f], 0.05);
-                    w.events.push({type: 'bumper', x: Math.round(f.x - side * 20), y: Math.round(f.y - 60)});
+                    f.vx = side * Math.max(1230, Math.abs(f.vx) * 1.65); f.vy = Math.min(f.vy, -630);   // (1.5x: across the arena)
+                    f.st = 'tumble'; f.spinV = side * 14; f.stun = 0.4; f.atk = null; f.ground = false;
+                    hitStop(w, [f], 0.08);
+                    w.events.push({type: 'bumper', heavy: true, x: Math.round(f.x - side * 20), y: Math.round(f.y - 60)});
                 } else if (hard && f.st !== 'ko') {
                     bounceOff(w, f, side, p);
                 } else {
@@ -1085,7 +1094,7 @@
             w.events.push({type: 'climbReset', id: f.id});
         }
         if (f.ground && f.plat && f.plat.belt && f.st !== 'ko')    // a conveyor carries you
-            f.x = Math.max(22, Math.min(W - 22, f.x + f.plat.belt * dt));
+            f.x = Math.max(22, Math.min(W - 22, f.x + f.plat.belt * (w.belts ? w.belts.dir : 1) * dt));
         if (f.ground && !wasGround) {
             f.jumps = 2; f.airDash = true; f.juggle = 0; f.noGrab = undefined; f.wallHits = 0;
             if (f.atk && f.atk.kind === 'dive')
@@ -1207,6 +1216,52 @@
             if (f.st !== 'ko' && f.ground && f.plat && f.plat.heat === 2 && f.inv <= 0 && !f.dummy)
                 burn(w, f, 'tile');
         }
+    }
+
+    // the foundry's belts reverse every few seconds (a strobe warns a second ahead)
+    function beltStep(w, dt) {
+        const b = w.belts;
+        if (!b || w.hold)
+            return;
+        b.t -= dt;
+        if (!b.warned && b.t <= b.warn) {
+            b.warned = true;
+            w.events.push({type: 'beltWarn'});
+        }
+        if (b.t <= 0) {
+            b.dir = -b.dir; b.t += b.every; b.warned = false;
+            w.events.push({type: 'beltFlip', dir: b.dir});
+        }
+    }
+
+    // wall debris: shards fall, and hurt whoever they strike on the way down (6, never lethal); they vanish soon after landing
+    function debrisStep(w, live, dt) {
+        for (const d of w.debris) {
+            const falling = d.vy !== 0 || d.vx !== 0;
+            if (falling) {
+                d.vy += C.GRAV * w.gravity * 0.8 * dt; d.x += d.vx * dt; d.y += d.vy * dt;
+                for (const p of w.plats) {
+                    if (p.alive && !p.solid && d.vy > 0 && d.x >= p.x && d.x <= p.x + p.w && d.y >= p.y && d.y - d.vy * dt <= p.y + 4) {
+                        d.y = p.y; d.vx = d.vy = 0; d.life = Math.min(d.life, 0.5);
+                        break;
+                    }
+                }
+            }
+            d.life -= dt;
+            if (!falling)
+                continue;
+            for (const f of live) {
+                if (f.st === 'ko' || f.dummy || f.ghost || f.inv > 0 || f.shield > 0 || d.hit.includes(f.id) ||
+                    !circleHits(d.x, d.y, 9, hurt(f)))
+                    continue;
+                d.hit.push(f.id);
+                if (!w.noDamage)
+                    f.hp = Math.max(1, f.hp - 6);
+                f.vx += Math.sign(d.vx || 1) * 220; f.vy = Math.min(f.vy, -280); f.ground = false; f.st = 'hurt'; f.stun = 0.25; f.atk = null;
+                w.events.push({type: 'debrisHit', x: Math.round(d.x), y: Math.round(d.y)});
+            }
+        }
+        w.debris = w.debris.filter(d => d.life > 0 && d.y < H + 100);
     }
 
     // pinball bumpers (Pinball Havoc): touch one and you're fired off it

@@ -444,6 +444,16 @@ const Hud = (() => {
         send({t: 'restart'});
     });
     $('mKeys').addEventListener('click', () => openControls());
+    $('mGuide').addEventListener('click', () => openGuide());
+    $('gClose').addEventListener('click', () => closeGuide());
+    const isGuideOpen = () => !$('guide').classList.contains('hidden');
+    function openGuide() {
+        $('guide').classList.remove('hidden');
+        Sfx.play('open');
+    }
+    function closeGuide() {
+        $('guide').classList.add('hidden');
+    }
     $('mMoves').addEventListener('click', () => {
         closeMenu();
         toggleMoves(true);
@@ -717,7 +727,9 @@ const Hud = (() => {
         setScene, feed, setOptions, openDrawer, closeDrawer, isDrawerOpen, match, vote, castVote, toast, setRoster,
         openSettings, syncSettings, closeSettings, isSettingsOpen, toggleMoves, combo, isControlsOpen, openControls,
         openSolo, closeSolo, isSoloOpen,
+        openGuide, closeGuide, isGuideOpen,
         setLocal(on) {
+            $('mGuide').classList.toggle('hidden', !on);
             $('localBtn').classList.toggle('on', on);
             $('localBtn').querySelector('.txt').textContent = on ? 'Local 2P: ON' : 'Local 2P';
         }, setSandboxBots: b => { sandboxBots = b; }, isFeedbackOpen, closeFeedback, feedbackAnswer, openMenu, closeMenu, isMenuOpen,

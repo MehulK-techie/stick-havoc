@@ -773,6 +773,8 @@ function snapshot() {
         beam: w.beam ? {ph: w.beam.phase, x: Math.round(w.beam.x), n: r1(w.beam.next)} : null,
         pl: w.plats.map(p => [p.alive ? 1 : 0, p.breaking > 0 ? 1 : 0, p.load > 0 ? r1(p.load / (p.crumbleAfter || 1.6)) : 0,
             p.solid ? p.hp : 0, Math.round(p.x), Math.round(p.y), p.heat || 0]),
+        belt: w.belts ? {d: w.belts.dir, w: w.belts.warned} : null,
+        deb: w.debris && w.debris.length ? w.debris.map(d => [Math.round(d.x), Math.round(d.y)]) : null,
         twist: m && m.twist ? TWISTS[m.twist] : null, nodes: w.nodes ? w.nodes.map(n => [n.x, n.y, n.r]) : null,
         out: m && m.world ? m.world.fighters.filter(f => !f.dummy && (f.st === 'ko' || f.st === 'gone')).map(f => f.id) : [],
         pred: m && m.phase === 'fight' && m.world && m.world.fighters.some(f => f.st === 'ko' || f.st === 'gone') &&

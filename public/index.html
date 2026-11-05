@@ -61,12 +61,37 @@
   </div>
 </div>
 
+<!-- Local 2P: who plays with which keys -->
+<div id="guide" class="panel hidden" role="dialog" aria-label="Local 2P keys">
+  <h2>👥 Local 2P: two players, one keyboard</h2>
+  <div class="sides">
+    <section class="side p1"><h3>PLAYER 1</h3><dl>
+      <dt>Move</dt><dd><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dd>
+      <dt>Attack</dt><dd><kbd>F</kbd></dd>
+      <dt>Jump</dt><dd><kbd>Space</kbd></dd>
+      <dt>Dash / Parry</dt><dd><kbd>G</kbd></dd>
+      <dt>Overdrive / Rage</dt><dd><kbd>R</kbd></dd>
+    </dl></section>
+    <section class="side p2"><h3>PLAYER 2</h3><dl>
+      <dt>Move</dt><dd><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></dd>
+      <dt>Attack</dt><dd><kbd>K</kbd></dd>
+      <dt>Jump</dt><dd><kbd>L</kbd></dd>
+      <dt>Dash / Parry</dt><dd><kbd>;</kbd></dd>
+      <dt>Overdrive / Rage</dt><dd><kbd>O</kbd></dd>
+    </dl></section>
+  </div>
+  <p class="sub">Dash is <b>G</b> / <b>;</b>. To parry, guard (<kbd>S</kbd> / <kbd>↓</kbd>) just as a hit lands.
+    Up + attack launches, down + attack sweeps. Rage works with a full meter or under 25 % health.</p>
+  <button id="gClose" class="primary">Got it <kbd>Esc</kbd></button>
+</div>
+
 <!-- Esc in a match: the menu (in 1P the match holds still while it's open) -->
 <div id="menu" class="panel hidden" role="dialog" aria-label="Menu">
   <h2 id="mTitle">Menu</h2>
   <p class="sub" id="mNote"></p>
   <button id="mResume" class="primary">Resume <kbd>Esc</kbd></button>
   <button id="mRestart">Restart the round <kbd>R</kbd></button>
+  <button id="mGuide" class="hidden">👥 Local 2P keys</button>
   <button id="mKeys">⌨️ Controls</button>
   <button id="mMoves">? Move list</button>
   <button id="mLobby">Back to lobby</button>

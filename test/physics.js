@@ -531,8 +531,8 @@ function run(w, frames, inputs) {
     for (let i = 0; i < 30 * 21; i++) {
         const ev = run(w, 1, {});
         if (ev.some(e => e.type === 'heatWarn')) {
+            ok = ok && (warned || cells.some(p => p.heat === 1));     // (the first warning: everything's safe, so some go amber)
             warned = true;
-            ok = ok && cells.some(p => p.heat === 1);
         }
         lavaMax = Math.max(lavaMax, cells.filter(p => p.heat === 2).length);
         safeMin = Math.min(safeMin, cells.filter(p => p.heat !== 2).length);
@@ -551,13 +551,26 @@ function run(w, frames, inputs) {
     run(w, 1, {});
     const x0 = f.x;
     run(w, 30, {});
-    check('a conveyor carries a standing fighter (150 px/s)', Math.abs(f.x - x0 - 150) < 12);
+    check('a conveyor carries a standing fighter (300 px/s)', Math.abs(f.x - x0 - 300) < 15);
+    const wb = world('kinetic'); const hb = fighter(wb, 1, 300, 820); hb.plat = wb.plats[0];
+    const evb = run(wb, 30 * 6.5, {});
+    check('every 6 s the belts reverse, a strobe a second before', evb.some(e => e.type === 'beltWarn') &&
+        evb.some(e => e.type === 'beltFlip' && e.dir === -1) && wb.belts.dir === -1);
+    const wd = world('kinetic'); const brk = wd.plats.find(p => p.solid && p.respawnAfter);
+    const bw = fighter(wd, 1, brk.x + 120, 820); Object.assign(bw, {st: 'tumble', vx: -900, vy: -100, ground: false, stun: 0.5});
+    run(wd, 3, {});
+    check('slamming a breakable wall throws debris', wd.debris.length >= 6);
+    const sh = wd.debris[0], victim = fighter(wd, 2, sh.x + 40, sh.y + 60);
+    wd.debris = [sh]; victim.shield = 0; victim.inv = 0; sh.hit = []; sh.x = victim.x; sh.y = victim.y - 40; sh.vx = 0; sh.vy = 100;
+    run(wd, 12, {});
+    check('a falling shard hurts (6) but never kills', victim.hp === 94);
     const g = fighter(w, 2, 700, 820); g.vx = 980; g.dashT = 0.2; g.st = 'dash';
     const ev = run(w, 8, {2: {k: P.IN.RIGHT}});
     check('slammed into the bumper pillar, you ricochet back', ev.some(e => e.type === 'bumper') && g.vx < 0 && g.x < 765);
     const wall = w.plats.find(p => p.solid && !p.bumper);
     wall.alive = false; wall.respawn = 0.1;
-    run(w, 10, {});
+    for (const q of w.fighters) q.x = 700;           // (a wall never regrows around someone: the ricochet may have left one beside it)
+    run(w, 30, {});     // (the bumper's hit-stop freezes the world for a few frames first)
     check('a broken side wall regrows after its blueprint time', wall.alive && wall.respawnAfter === 6);
 }
 {   // Fracture Sanctum: stand 1.5 s and the island breaks, 3 s later it forms again
